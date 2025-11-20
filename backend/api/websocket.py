@@ -2,11 +2,13 @@
 WebSocket endpoint for real-time EEG streaming.
 """
 
-from typing import Dict
+from typing import Dict, Optional
+import asyncio
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 
+from backend.pipeline.realtime_pipeline import RealtimePipeline
 from backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -21,6 +23,7 @@ class ConnectionManager:
     
     def __init__(self) -> None:
         self.active_connections: Dict[str, WebSocket] = {}
+        self.pipelines: Dict[str, RealtimePipeline] = {}
     
     async def connect(self, websocket: WebSocket, session_id: str) -> None:
         """Accept and register a new WebSocket connection."""
@@ -138,9 +141,51 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 async def handle_start_session(session_id: str, message: dict) -> None:
     """Handle start_session message."""
-    # TODO: Initialize EEG streaming pipeline
-    # TODO: Load user calibration model
-    # TODO: Start real-time processing
+    # Create pipeline with callbacks
+    async def on_brain_state(brain_state: dict):
+        await manager.send_message(session_id, {
+            "type": "brain_state",
+            "data": brain_state,
+            "timestamp": asyncio.get_event_loop().time()
+        })
+    
+    async def on_music_events(events: dict):
+        # Convert MidiEvent objects to dicts
+        serializable_events = {}
+        for layer, layer_events in events.items():
+            serializable_events[layer] = [
+                {
+                    "note": e.note,
+                    "velocity": e.velocity,
+                    "duration": e.duration,
+                    "time": e.time
+                }
+                for e in layer_events
+            ]
+        
+        await manager.send_message(session_id, {
+            "type": "music_events",
+            "data": serializable_events,
+            "timestamp": asyncio.get_event_loop().time()
+        })
+    
+    async def on_error(error: str):
+        await manager.send_message(session_id, {
+            "type": "error",
+            "code": "PIPELINE_ERROR",
+            "message": error
+        })
+    
+    pipeline = RealtimePipeline(
+        sampling_rate=256,
+        use_simulator=True,
+        on_brain_state=on_brain_state,
+        on_music_events=on_music_events,
+        on_error=on_error
+    )
+    
+    manager.pipelines[session_id] = pipeline
+    await pipeline.start()
     
     await manager.send_message(session_id, {
         "type": "session_started",
@@ -153,15 +198,25 @@ async def handle_start_session(session_id: str, message: dict) -> None:
 
 async def handle_stop_session(session_id: str) -> None:
     """Handle stop_session message."""
-    # TODO: Stop EEG streaming
-    # TODO: Save session data
-    # TODO: Cleanup resources
+    pipeline = manager.pipelines.get(session_id)
     
-    await manager.send_message(session_id, {
-        "type": "session_stopped",
-        "session_id": session_id,
-        "message": "Session stopped successfully"
-    })
+    if pipeline:
+        await pipeline.stop()
+        metrics = pipeline.get_metrics()
+        manager.pipelines.pop(session_id, None)
+        
+        await manager.send_message(session_id, {
+            "type": "session_stopped",
+            "session_id": session_id,
+            "message": "Session stopped successfully",
+            "metrics": metrics
+        })
+    else:
+        await manager.send_message(session_id, {
+            "type": "session_stopped",
+            "session_id": session_id,
+            "message": "No active session found"
+        })
     
     logger.info("session_stopped", session_id=session_id)
 

@@ -218,6 +218,13 @@ class EEGSimulator:
             return
         
         elapsed = time.time() - self.transition_start_time
+        
+        # Handle instant transition
+        if self.transition_duration <= 0:
+            self.mental_state = self.target_state
+            self.transition_start_time = None
+            return
+        
         progress = min(elapsed / self.transition_duration, 1.0)
         
         # Smooth transition (ease-out cubic)
