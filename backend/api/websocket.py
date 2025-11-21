@@ -9,6 +9,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 
 from backend.pipeline.realtime_pipeline import RealtimePipeline
+from backend.ml.calibration import CalibrationProtocol, CalibrationSession
 from backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -24,6 +25,7 @@ class ConnectionManager:
     def __init__(self) -> None:
         self.active_connections: Dict[str, WebSocket] = {}
         self.pipelines: Dict[str, RealtimePipeline] = {}
+        self.calibration_protocols: Dict[str, CalibrationProtocol] = {}
     
     async def connect(self, websocket: WebSocket, session_id: str) -> None:
         """Accept and register a new WebSocket connection."""
@@ -112,6 +114,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 
             elif message_type == "calibration_label":
                 await handle_calibration_label(session_id, message)
+                
+            elif message_type == "calibration_train":
+                await handle_calibration_train(session_id, message)
+                
+            elif message_type == "calibration_progress":
+                await handle_calibration_progress(session_id, message)
                 
             else:
                 await manager.send_message(session_id, {
@@ -223,42 +231,135 @@ async def handle_stop_session(session_id: str) -> None:
 
 async def handle_calibration_start(session_id: str, message: dict) -> None:
     """Handle calibration_start message."""
-    protocol = message.get("protocol", "standard")
+    user_id = message.get("user_id", session_id)
+    stage = message.get("stage", "baseline")
     
-    # TODO: Initialize calibration session
-    # TODO: Send calibration instructions
+    # Create or get calibration protocol
+    if session_id not in manager.calibration_protocols:
+        manager.calibration_protocols[session_id] = CalibrationProtocol(user_id=user_id)
+    
+    protocol = manager.calibration_protocols[session_id]
+    
+    # Start the specified stage
+    stage_info = protocol.start_stage(stage)
     
     await manager.send_message(session_id, {
-        "type": "calibration_started",
-        "protocol": protocol,
-        "message": "Calibration started. Please follow instructions."
+        "type": "calibration_stage_started",
+        "stage": stage_info['stage'],
+        "duration": stage_info['duration'],
+        "instructions": stage_info['instructions'],
+        "state_label": stage_info['state_label']
     })
     
     logger.info(
-        "calibration_started",
+        "calibration_stage_started",
         session_id=session_id,
-        protocol=protocol
+        user_id=user_id,
+        stage=stage
     )
 
 
 async def handle_calibration_label(session_id: str, message: dict) -> None:
-    """Handle calibration_label message."""
-    state = message.get("state")
+    """Handle calibration_label message - add feature sample."""
+    protocol = manager.calibration_protocols.get(session_id)
     
-    # TODO: Mark current data with label
-    # TODO: Update calibration progress
+    if not protocol:
+        await manager.send_message(session_id, {
+            "type": "error",
+            "code": "NO_CALIBRATION_SESSION",
+            "message": "No active calibration session"
+        })
+        return
+    
+    # Get features from message
+    features = message.get("features")
+    if features is None:
+        await manager.send_message(session_id, {
+            "type": "error",
+            "code": "MISSING_FEATURES",
+            "message": "Features required for calibration sample"
+        })
+        return
+    
+    # Add sample to protocol
+    import numpy as np
+    features_array = np.array(features)
+    protocol.add_sample(features_array)
+    
+    # Get progress
+    progress = protocol.get_stage_progress()
     
     await manager.send_message(session_id, {
-        "type": "calibration_label_received",
-        "state": state,
-        "message": f"Label '{state}' recorded"
+        "type": "calibration_progress",
+        "progress": progress
     })
     
     logger.debug(
-        "calibration_label_received",
+        "calibration_sample_added",
         session_id=session_id,
-        state=state
+        stage=progress.get('stage')
     )
 
+
+async def handle_calibration_train(session_id: str, message: dict) -> None:
+    """Handle calibration_train message - train the model."""
+    protocol = manager.calibration_protocols.get(session_id)
+    
+    if not protocol:
+        await manager.send_message(session_id, {
+            "type": "error",
+            "code": "NO_CALIBRATION_SESSION",
+            "message": "No active calibration session"
+        })
+        return
+    
+    try:
+        # Train the model
+        results = protocol.train_model()
+        
+        # Save the session
+        session = protocol.save()
+        
+        await manager.send_message(session_id, {
+            "type": "calibration_complete",
+            "validation_accuracy": results['validation_accuracy'],
+            "sample_counts": results['sample_counts'],
+            "training_time": results['training_time'],
+            "feature_importance": results['feature_importance']
+        })
+        
+        logger.info(
+            "calibration_trained",
+            session_id=session_id,
+            accuracy=results['validation_accuracy']
+        )
+        
+    except Exception as e:
+        logger.exception("calibration_training_failed", session_id=session_id)
+        await manager.send_message(session_id, {
+            "type": "error",
+            "code": "CALIBRATION_TRAINING_FAILED",
+            "message": str(e)
+        })
+
+
+async def handle_calibration_progress(session_id: str, message: dict) -> None:
+    """Handle calibration_progress request - get current progress."""
+    protocol = manager.calibration_protocols.get(session_id)
+    
+    if not protocol:
+        await manager.send_message(session_id, {
+            "type": "error",
+            "code": "NO_CALIBRATION_SESSION",
+            "message": "No active calibration session"
+        })
+        return
+    
+    progress = protocol.get_stage_progress()
+    
+    await manager.send_message(session_id, {
+        "type": "calibration_progress",
+        "progress": progress
+    })
 
 

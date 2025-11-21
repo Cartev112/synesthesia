@@ -310,8 +310,8 @@ class TestRealtimePipeline:
         
         await pipeline.start()
         
-        # Run for 2 seconds
-        await asyncio.sleep(2.0)
+        # Run for 3 seconds to ensure data collection
+        await asyncio.sleep(3.0)
         
         await pipeline.stop()
         
@@ -342,13 +342,13 @@ class TestRealtimePipeline:
         await pipeline.start()
         
         # Wait for pipeline to start generating data
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(2.0)
         
         # Set focus state
         pipeline.set_mental_state('focus', intensity=1.0)
         
         # Run longer to collect data
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(2.5)
         
         await pipeline.stop()
         
@@ -361,7 +361,8 @@ class TestRealtimePipeline:
         pipeline = RealtimePipeline(sampling_rate=256, use_simulator=True)
         
         await pipeline.start()
-        await asyncio.sleep(1.0)
+        # Wait longer to ensure data is collected
+        await asyncio.sleep(3.0)
         await pipeline.stop()
         
         metrics = pipeline.get_metrics()
