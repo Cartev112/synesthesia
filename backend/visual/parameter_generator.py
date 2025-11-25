@@ -12,17 +12,64 @@ from backend.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Default baseline for all visual parameters. Only a handful of fields will be
+# mapped dynamically from brain-state input; the rest remain constant.
+DEFAULT_VISUAL_PARAMS: Dict[str, float] = {
+    'frequency_ratio_x': 3.0,
+    'frequency_ratio_y': 2.0,
+    'phase_offset': 0.0,
+    'amplitude_x': 0.9,
+    'amplitude_y': 0.9,
+    'rotation_speed': 0.0,
+    'num_harmonics': 5,
+    'hue_base': 180.0,
+    'saturation': 0.7,
+    'brightness': 0.8,
+    'color_cycle_speed': 0.2,
+    'recursion_depth': 2,
+    'point_density': 1000,
+    'trail_length': 0.5,
+    'distortion_amount': 0.1,
+    'speed_multiplier': 1.0,
+    'pulse_frequency': 1.0,
+    'pulse_amplitude': 0.2,
+    'damping_x': 0.02,
+    'damping_y': 0.02,
+    'num_epicycles': 6,
+    'epicycle_decay': 0.7,
+    'portal_symmetry': 8,
+    'portal_radial_frequency': 6.0,
+    'portal_angular_frequency': 2.0,
+    'portal_warp': 0.4,
+    'portal_spiral': 0.0,
+    'portal_layers': 4,
+    'portal_radius': 0.55,
+    'portal_ripple': 0.25,
+    'portal_depth_skew': 0.4
+}
+
+DEFAULT_BRAIN_STATE = {
+    'focus': 0.5,
+    'relax': 0.5,
+    'neutral': 0.5,
+    'asymmetry': 0.0,
+    'stability': 0.5
+}
+
+MAPPED_KEYS = ['trail_length', 'rotation_speed', 'speed_multiplier', 'portal_layers']
+
 
 class VisualParameterGenerator:
     """
     Maps brain state to visual parameters for geometric art.
     
-    Generates parameters for:
-    - Lissajous curves
-    - Harmonographs
-    - Fourier epicycles
+    Only the following parameters are brain-state aware:
+    - trail_length
+    - rotation_speed
+    - speed_multiplier
+    - portal_layers
     
-    Frontend uses these parameters to render visuals.
+    All other parameters remain fixed at DEFAULT_VISUAL_PARAMS.
     """
     
     def __init__(self):
@@ -42,9 +89,6 @@ class VisualParameterGenerator:
                 - relax: 0-1
                 - neutral: 0-1
                 - hemispheric_asymmetry: -1 to 1
-                - theta_power: 0-1 (optional)
-                - alpha_power: 0-1 (optional)
-                - beta_power: 0-1 (optional)
                 - stability: 0-1 (optional)
                 
         Returns:
@@ -55,70 +99,34 @@ class VisualParameterGenerator:
         relax = brain_state.get('relax', 0.5)
         neutral = brain_state.get('neutral', 0.5)
         asymmetry = brain_state.get('hemispheric_asymmetry', 0.0)
-        theta = brain_state.get('theta_power', 0.5)
-        alpha = brain_state.get('alpha_power', 0.5)
-        beta = brain_state.get('beta_power', 0.5)
         stability = brain_state.get('stability', 0.5)
-        arousal = beta
         
-        # Generate new parameters
-        new_params = {
-            'timestamp': time.time(),
-            
-            # Wave function parameters (Lissajous/Harmonograph)
-            'frequency_ratio_x': 2.0 + focus * 4.0,  # 2-6
-            'frequency_ratio_y': 1.0 + focus * 3.0,  # 1-4
-            'phase_offset': asymmetry * np.pi,  # -π to π radians
-            'amplitude_x': 0.8 + relax * 0.2,  # 0.8-1.0
-            'amplitude_y': 0.8 + relax * 0.2,  # 0.8-1.0
-            'rotation_speed': asymmetry * 0.5,  # -0.5 to 0.5 rad/sec
-            'num_harmonics': int(3 + focus * 7),  # 3-10 harmonics
-            
-            # Color parameters (HSV)
-            'hue_base': (theta * 360) % 360,  # 0-360 degrees
-            'saturation': 0.5 + (focus * 0.3),  # 0.5-0.8
-            'brightness': 0.7 + (relax * 0.3),  # 0.7-1.0
-            'color_cycle_speed': 0.1 + (beta * 0.3),  # 0.1-0.4
-            
-            # Complexity parameters
-            'recursion_depth': int(1 + focus * 3),  # 1-4 levels
-            'point_density': int(500 + focus * 1500),  # 500-2000 points
-            'trail_length': relax * 0.8,  # 0-0.8 (more trails when relaxed)
-            'distortion_amount': (1 - relax) * 0.3,  # 0-0.3 (less when relaxed)
-            
-            # Animation parameters
-            'speed_multiplier': 0.5 + (focus * 1.0),  # 0.5-1.5
-            'pulse_frequency': 0.5 + (alpha * 1.5),  # 0.5-2.0 Hz
-            'pulse_amplitude': 0.1 + (stability * 0.2),  # 0.1-0.3
-            
-            # Damping (for harmonograph)
-            'damping_x': 0.01 + ((1 - stability) * 0.04),  # 0.01-0.05
-            'damping_y': 0.01 + ((1 - stability) * 0.04),  # 0.01-0.05
-            
-            # Epicycle parameters
-            'num_epicycles': int(3 + focus * 7),  # 3-10 circles
-            'epicycle_decay': 0.5 + (relax * 0.3),  # 0.5-0.8
-
-            # Hyperspace portal parameters (new algorithm)
-            'portal_symmetry': int(5 + focus * 5 + arousal * 2),  # 5-12 spokes
-            'portal_radial_frequency': 3.0 + focus * 6.0,  # 3-9
-            'portal_angular_frequency': 1.0 + relax * 2.0,  # 1-3
-            'portal_warp': np.clip(0.15 + arousal * 0.55 + (1 - relax) * 0.25, 0.1, 0.95),
-            'portal_spiral': asymmetry * 0.9 + (focus - 0.5) * 0.6,  # left/right twist
-            'portal_layers': int(3 + stability * 3 + focus * 1.5),  # 3-7 depth slices
-            'portal_radius': np.clip(0.35 + relax * 0.35 - focus * 0.08, 0.28, 0.85),
-            'portal_ripple': 0.12 + theta * 0.25 + alpha * 0.1,  # 0.12-0.47
-            'portal_depth_skew': 0.25 + (1 - stability) * 0.4,  # 0.25-0.65
-            
-            # Brain state (for reference)
-            'brain_state': {
+        overrides = {
+            # Relaxation yields longest trails, focus shortest, neutral in between.
+            # Normalize via weighted mix while respecting [0.3, 0.8].
+            'trail_length': np.clip(
+                0.3 * focus + 0.5 * neutral + 0.8 * relax,
+                0.3,
+                0.8
+            ),
+            # Hemispheric asymmetry controls slow rotation (-0.5 to 0.5 rad/sec)
+            'rotation_speed': np.clip(asymmetry * 0.5, -0.5, 0.5),
+            # Focus drives speed (0.6 - 1.4)
+            'speed_multiplier': np.clip(0.6 + focus * 0.8, 0.6, 1.4),
+            # Stability/focus control depth layers (3 - 7)
+            'portal_layers': int(np.clip(3 + stability * 2 + focus, 3, 7))
+        }
+        
+        new_params = self._build_param_set(
+            overrides=overrides,
+            brain_state={
                 'focus': focus,
                 'relax': relax,
                 'neutral': neutral,
                 'asymmetry': asymmetry,
                 'stability': stability
             }
-        }
+        )
         
         # Apply smoothing if we have previous parameters
         if self.last_params is not None:
@@ -130,8 +138,8 @@ class VisualParameterGenerator:
             "visual_params_generated",
             focus=focus,
             relax=relax,
-            hue=new_params['hue_base'],
-            complexity=new_params['num_harmonics']
+            rotation=new_params['rotation_speed'],
+            portal_layers=new_params['portal_layers']
         )
         
         return new_params
@@ -150,19 +158,8 @@ class VisualParameterGenerator:
         smoothed = new_params.copy()
         alpha = self.smoothing_factor
         
-        # Smooth numeric parameters
-        numeric_keys = [
-            'frequency_ratio_x', 'frequency_ratio_y', 'phase_offset',
-            'amplitude_x', 'amplitude_y', 'rotation_speed',
-            'hue_base', 'saturation', 'brightness', 'color_cycle_speed',
-            'trail_length', 'distortion_amount', 'speed_multiplier',
-            'pulse_frequency', 'pulse_amplitude', 'damping_x', 'damping_y',
-            'epicycle_decay', 'portal_warp', 'portal_spiral', 'portal_radius',
-            'portal_ripple', 'portal_depth_skew', 'portal_radial_frequency',
-            'portal_angular_frequency'
-        ]
-        
-        for key in numeric_keys:
+        # Smooth numeric parameters that are brain-state driven
+        for key in MAPPED_KEYS:
             if key in old_params and key in new_params:
                 old_val = old_params[key]
                 new_val = new_params[key]
@@ -315,14 +312,15 @@ class VisualParameterGenerator:
             logger.warning("unknown_preset", preset=preset_name)
             preset_name = 'calm'
         
-        params = presets[preset_name].copy()
+        return self._build_param_set(
+            overrides=presets[preset_name],
+            brain_state=DEFAULT_BRAIN_STATE.copy()
+        )
+
+    def _build_param_set(self, overrides: Dict[str, float], brain_state: Dict[str, float]) -> Dict:
+        """Merge overrides with defaults and append metadata."""
+        params = DEFAULT_VISUAL_PARAMS.copy()
+        params.update(overrides)
         params['timestamp'] = time.time()
-        params['brain_state'] = {
-            'focus': 0.5,
-            'relax': 0.5,
-            'neutral': 0.5,
-            'asymmetry': 0.0,
-            'stability': 0.5
-        }
-        
+        params['brain_state'] = brain_state
         return params

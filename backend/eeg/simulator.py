@@ -54,13 +54,13 @@ class EEGSimulator:
         # Random number generator
         self.rng = np.random.RandomState(seed)
         
-        # Current state
-        self.mental_state: BrainState = "neutral"
+        # Current state - start with first state in rotation
+        self.mental_state: BrainState = "relax"
         self.state_intensity: float = 1.0
         self.hemispheric_asymmetry: float = 0.0  # -1 (left) to 1 (right)
         
         # Transition parameters
-        self.target_state: BrainState = "neutral"
+        self.target_state: BrainState = "relax"
         self.transition_start_time: Optional[float] = None
         self.transition_duration: float = 2.0  # seconds
         
@@ -68,10 +68,21 @@ class EEGSimulator:
         self.auto_vary_states: bool = True
         self.last_state_change: float = time.time()
         self.state_change_interval: float = 10.0  # Change state every 10 seconds
+        self.state_rotation_index: int = 0  # Track position in rotation
+        self.state_rotation: list[BrainState] = ["relax", "neutral", "focus"]  # Deterministic rotation
         
-        # Phase accumulator for oscillators
-        self.phase: NDArray[np.float64] = np.zeros(n_channels)
+        # Time counter for phase calculation
+        self.sample_count_time = 0
         self.time_step = 1.0 / sampling_rate
+        
+        # Band-specific frequencies (pick once and stick with them)
+        self.band_frequencies = {
+            'delta': 2.0,
+            'theta': 6.0,
+            'alpha': 10.0,
+            'beta': 20.0,
+            'gamma': 40.0
+        }
         
         # Band power parameters (baseline)
         self.band_params = {
@@ -142,29 +153,31 @@ class EEGSimulator:
         sample = np.zeros(self.n_channels)
         
         for band_name, params in self.band_params.items():
-            freq_low, freq_high = params['freq_range']
             power = band_powers[band_name]
             
-            # Generate oscillation for this band
-            freq = self.rng.uniform(freq_low, freq_high)
+            # Use fixed frequency for this band
+            freq = self.band_frequencies[band_name]
             amplitude = np.sqrt(power) * 10.0  # Scale to microvolts
             
             # Different amplitude per channel (spatial variation)
             channel_amplitudes = self._get_channel_amplitudes(band_name)
             
-            # Generate sinusoidal component
-            oscillation = amplitude * channel_amplitudes * np.sin(2 * np.pi * freq * self.phase)
+            # Generate sinusoidal component with proper phase
+            # Each band has its own phase progression based on current time
+            current_time = self.sample_count_time * self.time_step
+            band_phase = 2 * np.pi * freq * current_time
+            oscillation = amplitude * channel_amplitudes * np.sin(band_phase)
             sample += oscillation
         
-        # Add pink noise (1/f characteristic)
+        # Add pink noise (1/f characteristic) - reduced to not dominate signal
         noise = self._generate_pink_noise()
-        sample += noise * 5.0  # Scale noise
+        sample += noise * 2.0  # Scale noise (reduced from 5.0)
         
         # Apply hemispheric asymmetry
         sample = self._apply_hemispheric_asymmetry(sample)
         
-        # Update phase
-        self.phase += self.time_step
+        # Update time counter
+        self.sample_count_time += 1
         
         return sample
     
@@ -219,20 +232,23 @@ class EEGSimulator:
     
     def _update_state_transition(self) -> None:
         """Update current state based on transition progress."""
-        # Auto-vary states for demo mode
+        # Auto-vary states for demo mode with deterministic rotation
         if self.auto_vary_states:
             current_time = time.time()
             if current_time - self.last_state_change >= self.state_change_interval:
-                # Randomly pick a new state
-                states: list[BrainState] = ["neutral", "focus", "relax"]
-                new_state = self.rng.choice(states)
-                intensity = self.rng.uniform(0.6, 1.0)
-                self.set_mental_state(new_state, intensity, transition_time=3.0)
+                # Rotate through states in order: relax -> neutral -> focus -> relax...
+                new_state = self.state_rotation[self.state_rotation_index]
+                self.state_rotation_index = (self.state_rotation_index + 1) % len(self.state_rotation)
+                
+                # Use full intensity for clear distinction
+                intensity = 1.0
+                self.set_mental_state(new_state, intensity, transition_time=1.0)
                 self.last_state_change = current_time
                 logger.info(
                     "auto_state_change",
                     new_state=new_state,
-                    intensity=intensity
+                    intensity=intensity,
+                    rotation_index=self.state_rotation_index
                 )
         
         if self.transition_start_time is None:
@@ -267,29 +283,32 @@ class EEGSimulator:
         Returns:
             Dictionary of band powers
         """
+        # Neutral baseline: balanced powers
         powers = {
             'delta': 1.0,
-            'theta': 0.8,
-            'alpha': 1.2,
-            'beta': 0.6,
-            'gamma': 0.3
+            'theta': 1.0,
+            'alpha': 1.0,
+            'beta': 1.0,
+            'gamma': 0.5
         }
         
         intensity = self.state_intensity
         
         if self.mental_state == "focus":
-            # Focus: increased beta and gamma, decreased alpha
-            powers['beta'] = 0.6 + (0.8 * intensity)
-            powers['gamma'] = 0.3 + (0.5 * intensity)
-            powers['alpha'] = 1.2 - (0.6 * intensity)
-            powers['theta'] = 0.8 - (0.3 * intensity)
+            # Focus: HIGH beta and gamma, LOW alpha and theta
+            powers['beta'] = 1.0 + (1.5 * intensity)  # Up to 2.5
+            powers['gamma'] = 0.5 + (0.8 * intensity)  # Up to 1.3
+            powers['alpha'] = 1.0 - (0.7 * intensity)  # Down to 0.3
+            powers['theta'] = 1.0 - (0.7 * intensity)  # Down to 0.3
+            powers['delta'] = 1.0 - (0.4 * intensity)  # Down to 0.6
             
         elif self.mental_state == "relax":
-            # Relax: increased alpha and theta, decreased beta
-            powers['alpha'] = 1.2 + (0.8 * intensity)
-            powers['theta'] = 0.8 + (0.6 * intensity)
-            powers['beta'] = 0.6 - (0.3 * intensity)
-            powers['gamma'] = 0.3 - (0.2 * intensity)
+            # Relax: HIGH alpha and theta, LOW beta and gamma
+            powers['alpha'] = 1.0 + (2.5 * intensity)  # Up to 3.5
+            powers['theta'] = 1.0 + (1.5 * intensity)  # Up to 2.5
+            powers['beta'] = 1.0 - (0.8 * intensity)  # Down to 0.2
+            powers['gamma'] = 0.5 - (0.4 * intensity)  # Down to 0.1
+            powers['delta'] = 1.0 + (0.5 * intensity)  # Up to 1.5
         
         return powers
     
@@ -431,6 +450,8 @@ class StreamingEEGSimulator(EEGSimulator):
         
         self.sample_count += n_samples
         return data
+
+
 
 
 

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     workers: int = 1
+    frontend_url: str | None = None
     
     # Database
     database_url: str = "postgresql://synesthesia:password@localhost:5432/synesthesia_db"
@@ -85,6 +86,31 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Check if running in production mode."""
         return self.env == "production"
+    
+    @property
+    def cors_allow_origins(self) -> list[str]:
+        """
+        Allowed origins for CORS.
+        Uses explicit FRONTEND_URL in production, development defaults otherwise.
+        """
+        if self.is_development:
+            return [
+                "http://localhost:5173",
+                "http://localhost:5174",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:5174",
+            ]
+        
+        if self.frontend_url:
+            return [self.frontend_url]
+        
+        # Fallback to permissive origin when no frontend is specified
+        return ["*"]
+    
+    @property
+    def cors_allow_credentials(self) -> bool:
+        """Allow credentials unless using wildcard origins."""
+        return "*" not in self.cors_allow_origins
 
 
 # Global settings instance
@@ -97,6 +123,8 @@ def get_settings() -> Settings:
     Useful for dependency injection in FastAPI.
     """
     return settings
+
+
 
 
 

@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from backend.visual.algorithms import VisualAlgorithmFactory
+from backend.visual.parameter_generator import DEFAULT_VISUAL_PARAMS
 from backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -224,17 +225,7 @@ async def get_algorithm_formula(request: AlgorithmRequest):
     generator = VisualAlgorithmFactory.create(request.algorithm_type)
     
     # Get formula with default parameters
-    default_params = {
-        'frequency_ratio_x': 3.0,
-        'frequency_ratio_y': 2.0,
-        'phase_offset': 0.0,
-        'num_harmonics': 4,
-        'damping_x': 0.02,
-        'damping_y': 0.02,
-        'num_epicycles': 5,
-        'epicycle_decay': 0.7,
-        'rotation_speed': 0.5
-    }
+    default_params = DEFAULT_VISUAL_PARAMS.copy()
     
     formula = generator.generate_formula(default_params)
     
@@ -253,89 +244,29 @@ async def get_parameter_ranges():
         Parameter ranges and descriptions
     """
     ranges = {
-        "frequency_ratio_x": {
-            "min": 1.0,
-            "max": 10.0,
-            "default": 3.0,
-            "description": "X-axis frequency ratio"
-        },
-        "frequency_ratio_y": {
-            "min": 1.0,
-            "max": 10.0,
-            "default": 2.0,
-            "description": "Y-axis frequency ratio"
-        },
-        "phase_offset": {
-            "min": -3.14159,
-            "max": 3.14159,
-            "default": 0.0,
-            "description": "Phase offset in radians"
-        },
-        "amplitude_x": {
-            "min": 0.1,
-            "max": 1.0,
-            "default": 1.0,
-            "description": "X-axis amplitude"
-        },
-        "amplitude_y": {
-            "min": 0.1,
-            "max": 1.0,
-            "default": 1.0,
-            "description": "Y-axis amplitude"
-        },
-        "rotation_speed": {
-            "min": -1.0,
-            "max": 1.0,
-            "default": 0.0,
-            "description": "Rotation speed in rad/sec"
-        },
-        "num_harmonics": {
-            "min": 1,
-            "max": 10,
-            "default": 4,
-            "description": "Number of harmonics"
-        },
-        "hue_base": {
-            "min": 0,
-            "max": 360,
-            "default": 180,
-            "description": "Base hue in HSV (degrees)"
-        },
-        "saturation": {
-            "min": 0.0,
-            "max": 1.0,
-            "default": 0.8,
-            "description": "Color saturation"
-        },
-        "brightness": {
-            "min": 0.0,
-            "max": 1.0,
-            "default": 0.9,
-            "description": "Color brightness"
-        },
-        "color_cycle_speed": {
-            "min": 0.0,
-            "max": 1.0,
-            "default": 0.2,
-            "description": "Color cycling speed"
-        },
-        "point_density": {
-            "min": 100,
-            "max": 5000,
-            "default": 1000,
-            "description": "Number of points to render"
-        },
         "trail_length": {
-            "min": 0.0,
-            "max": 1.0,
-            "default": 0.5,
+            "min": 0.3,
+            "max": 0.8,
+            "default": DEFAULT_VISUAL_PARAMS['trail_length'],
             "description": "Trail fade amount"
         },
-        "distortion_amount": {
-            "min": 0.0,
+        "rotation_speed": {
+            "min": -0.5,
             "max": 0.5,
-            "default": 0.1,
-            "description": "Distortion effect amount"
+            "default": DEFAULT_VISUAL_PARAMS['rotation_speed'],
+            "description": "Rotation speed in rad/sec"
+        },
+        "speed_multiplier": {
+            "min": 0.6,
+            "max": 1.4,
+            "default": DEFAULT_VISUAL_PARAMS['speed_multiplier'],
+            "description": "Global animation speed"
+        },
+        "portal_layers": {
+            "min": 3,
+            "max": 7,
+            "default": DEFAULT_VISUAL_PARAMS['portal_layers'],
+            "description": "Depth layers rendered in the hyperspace portal"
         }
     }
     
