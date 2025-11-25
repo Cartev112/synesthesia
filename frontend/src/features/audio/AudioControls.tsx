@@ -13,7 +13,6 @@ import { useAudioEngineContext } from '@/contexts/AudioEngineContext';
 interface TrackConfig {
   name: string;
   synth: string;
-  effects: string[];
   volume: number;
   enabled: boolean;
   color: string;
@@ -24,13 +23,6 @@ const SYNTHESIZERS = [
   { id: 'square', name: 'Square', desc: 'Bright' },
   { id: 'sawtooth', name: 'Sawtooth', desc: 'Buzzy' },
   { id: 'triangle', name: 'Triangle', desc: 'Mellow' },
-];
-
-const EFFECTS = [
-  { id: 'reverb', name: 'Reverb' },
-  { id: 'delay', name: 'Delay' },
-  { id: 'filter', name: 'Filter' },
-  { id: 'compressor', name: 'Compressor' },
 ];
 
 export function AudioControls() {
@@ -51,32 +43,28 @@ export function AudioControls() {
   const [tracks, setTracks] = useState<Record<string, TrackConfig>>({
     bass: {
       name: 'Bass',
-      synth: 'sawtooth',
-      effects: [],
-      volume: 70,
+      synth: 'sine',
+      volume: 40,
       enabled: true,
       color: 'text-red-400'
     },
     harmony: {
       name: 'Harmony',
-      synth: 'sine',
-      effects: [],
+      synth: 'sawtooth',
       volume: 50,
       enabled: true,
       color: 'text-blue-400'
     },
     melody: {
       name: 'Melody',
-      synth: 'triangle',
-      effects: [],
+      synth: 'square',
       volume: 60,
       enabled: true,
       color: 'text-syn-cyan'
     },
     texture: {
       name: 'Texture',
-      synth: 'sine',
-      effects: [],
+      synth: 'triangle',
       volume: 40,
       enabled: true,
       color: 'text-purple-400'
@@ -99,24 +87,6 @@ export function AudioControls() {
       ...prev,
       [trackId]: { ...prev[trackId], synth: synthId }
     }));
-  };
-
-  const toggleTrackEffect = (trackId: string, effectId: string) => {
-    const track = tracks[trackId];
-    const hasEffect = track.effects.includes(effectId);
-    
-    // Effects are not yet implemented in frontend engine
-    // Just update UI state for now
-    setTracks(prev => ({
-      ...prev,
-      [trackId]: {
-        ...prev[trackId],
-        effects: hasEffect
-          ? prev[trackId].effects.filter(e => e !== effectId)
-          : [...prev[trackId].effects, effectId]
-      }
-    }));
-    console.log(`${effectId} for ${trackId} (UI only - effects not yet implemented)`);
   };
 
   const toggleTrackEnabled = (trackId: string) => {
@@ -233,29 +203,6 @@ export function AudioControls() {
                       </div>
                     </div>
 
-                    {/* Effects */}
-                    <div>
-                      <div className="text-[9px] text-muted-foreground mb-1">EFFECTS</div>
-                      <div className="flex flex-wrap gap-1">
-                        {EFFECTS.map((effect) => {
-                          const isActive = track.effects.includes(effect.id);
-                          return (
-                            <button
-                              key={effect.id}
-                              onClick={() => toggleTrackEffect(trackId, effect.id)}
-                              className={`text-[9px] px-2 py-0.5 rounded border transition-colors ${
-                                isActive
-                                  ? 'bg-syn-purple/10 border-syn-purple text-syn-purple'
-                                  : 'border-border hover:border-syn-purple/50'
-                              }`}
-                            >
-                              {effect.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
                     {/* Volume */}
                     <div>
                       <div className="flex justify-between text-[9px] text-muted-foreground mb-1">
@@ -292,8 +239,7 @@ export function AudioControls() {
         <div className="pt-2 border-t border-border">
           <div className="text-[9px] text-muted-foreground space-y-0.5">
             <p>• 4 musical layers (bass, harmony, melody, texture)</p>
-            <p>• 6 synthesizers per track</p>
-            <p>• 4 effects: reverb, delay, filter, compressor</p>
+            <p>• 4 synthesizers per track</p>
           </div>
         </div>
       </CardContent>

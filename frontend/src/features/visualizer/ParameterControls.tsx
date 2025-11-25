@@ -88,7 +88,7 @@ const PARAM_GROUPS = {
 
 export function ParameterControls({ onParamsChange, currentParams }: ParameterControlsProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['wave', 'portal']));
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['portal']));
   const [localParams, setLocalParams] = useState<Record<string, number>>({});
 
   const toggleGroup = (groupKey: string) => {

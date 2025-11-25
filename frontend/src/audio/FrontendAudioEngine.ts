@@ -22,6 +22,11 @@ const DEFAULT_TRACKS: TrackConfig[] = [
 export class FrontendAudioEngine {
   private audioContext: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private lowPassFilter: BiquadFilterNode | null = null;
+  private reverbGain: GainNode | null = null;
+  private dryGain: GainNode | null = null;
+  private convolver: ConvolverNode | null = null;
+  private reverbHighPass: BiquadFilterNode | null = null;
   private tracks: Map<string, AudioTrack> = new Map();
   private musicGenerator: MusicGenerator;
   private isPlaying: boolean = false;
@@ -52,10 +57,51 @@ export class FrontendAudioEngine {
     // Create audio context
     this.audioContext = new AudioContext();
     
-    // Create master gain
+    // Create master effects chain:
+    // Tracks → Master Gain → Low-Pass Filter → Dry/Wet Split → Reverb → Output
+    
+    // Master gain (pre-effects)
     this.masterGain = this.audioContext.createGain();
     this.masterGain.gain.value = 0.8;
-    this.masterGain.connect(this.audioContext.destination);
+    
+    // Low-pass filter for warmth
+    this.lowPassFilter = this.audioContext.createBiquadFilter();
+    this.lowPassFilter.type = 'lowpass';
+    this.lowPassFilter.frequency.value = 2000; // Will be modulated by brain state
+    this.lowPassFilter.Q.value = 1.0;
+    
+    // Dry signal path
+    this.dryGain = this.audioContext.createGain();
+    this.dryGain.gain.value = 0.5; // 50% dry
+    
+    // Wet signal path (reverb)
+    this.reverbGain = this.audioContext.createGain();
+    this.reverbGain.gain.value = 0.5; // 50% wet (will be modulated)
+    
+    // High-pass filter on reverb for shimmer and clarity
+    this.reverbHighPass = this.audioContext.createBiquadFilter();
+    this.reverbHighPass.type = 'highpass';
+    this.reverbHighPass.frequency.value = 200; // Cut low mud from reverb
+    this.reverbHighPass.Q.value = 0.7;
+    
+    // Create massive reverb
+    this.convolver = this.audioContext.createConvolver();
+    await this.createReverbImpulse();
+    
+    // Connect the chain
+    this.masterGain.connect(this.lowPassFilter);
+    
+    // Split to dry and wet
+    this.lowPassFilter.connect(this.dryGain);
+    this.lowPassFilter.connect(this.convolver);
+    
+    // Wet path through reverb with high-pass filter
+    this.convolver.connect(this.reverbHighPass);
+    this.reverbHighPass.connect(this.reverbGain);
+    
+    // Mix dry and wet to output
+    this.dryGain.connect(this.audioContext.destination);
+    this.reverbGain.connect(this.audioContext.destination);
 
     // Create default tracks
     for (const trackConfig of DEFAULT_TRACKS) {
@@ -64,7 +110,36 @@ export class FrontendAudioEngine {
       this.tracks.set(trackConfig.name, track);
     }
 
-    console.log('✅ Frontend audio engine initialized');
+    console.log('✅ Frontend audio engine initialized with reverb');
+  }
+
+  /**
+   * Create a massive reverb impulse response
+   */
+  private async createReverbImpulse(): Promise<void> {
+    if (!this.audioContext || !this.convolver) return;
+
+    const sampleRate = this.audioContext.sampleRate;
+    const length = sampleRate * 6; // 6 second reverb tail (longer)
+    const impulse = this.audioContext.createBuffer(2, length, sampleRate);
+    const leftChannel = impulse.getChannelData(0);
+    const rightChannel = impulse.getChannelData(1);
+
+    // Create a lush, spacey reverb with exponential decay
+    for (let i = 0; i < length; i++) {
+      const decay = Math.exp(-i / (sampleRate * 2.0)); // 2.0s decay time (longer)
+      
+      // Add some randomness for diffusion
+      const noise = (Math.random() * 2 - 1) * decay;
+      
+      // Add some early reflections
+      const earlyReflection = i < sampleRate * 0.05 ? Math.sin(i * 0.01) * decay : 0;
+      
+      leftChannel[i] = noise + earlyReflection;
+      rightChannel[i] = noise * 0.9 + earlyReflection * 1.1; // Slightly different for stereo width
+    }
+
+    this.convolver.buffer = impulse;
   }
 
   /**
@@ -162,6 +237,43 @@ export class FrontendAudioEngine {
    */
   updateBrainState(brainState: Partial<BrainState>): void {
     this.brainState = { ...this.brainState, ...brainState };
+    this.updateMasterEffects();
+  }
+
+  /**
+   * Update master effects based on brain state
+   */
+  private updateMasterEffects(): void {
+    if (!this.audioContext || !this.lowPassFilter || !this.reverbGain) return;
+
+    const now = this.audioContext.currentTime;
+    
+    // Low-pass filter cutoff based on brain state
+    // Relax = lower cutoff (darker, warmer)
+    // Focus = higher cutoff (brighter, clearer)
+    const minCutoff = 800;   // Hz
+    const maxCutoff = 4000;  // Hz
+    const cutoff = minCutoff + (this.brainState.focus * (maxCutoff - minCutoff));
+    
+    // Smooth transition
+    this.lowPassFilter.frequency.cancelScheduledValues(now);
+    this.lowPassFilter.frequency.setTargetAtTime(cutoff, now, 0.1);
+    
+    // Reverb mix based on brain state
+    // Relax = more reverb (spacey, ambient)
+    // Focus = less reverb (dry, present)
+    const minReverb = 0.3;  // 30% wet
+    const maxReverb = 0.8;  // 80% wet
+    const reverbMix = minReverb + (this.brainState.relax * (maxReverb - minReverb));
+    
+    // Adjust dry/wet balance
+    this.reverbGain.gain.cancelScheduledValues(now);
+    this.reverbGain.gain.setTargetAtTime(reverbMix, now, 0.1);
+    
+    if (this.dryGain) {
+      this.dryGain.gain.cancelScheduledValues(now);
+      this.dryGain.gain.setTargetAtTime(1 - reverbMix, now, 0.1);
+    }
   }
 
   /**

@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { StatusPanel } from '@/features/dashboard/StatusPanel';
+import { useEffect, useState } from 'react';
 import { VisualCanvas } from '@/features/visualizer/VisualCanvas';
 import { VisualSettings } from '@/features/visualizer/VisualSettings';
 import { ParameterControls } from '@/features/visualizer/ParameterControls';
@@ -23,7 +22,6 @@ function App() {
 
   const audioEngine = useAudioEngineContext();
 
-  const logsRef = useRef<HTMLDivElement>(null);
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<AlgorithmType>('harmonograph');
   const [presetParams, setPresetParams] = useState<any>(null);
   const [manualParams, setManualParams] = useState<any>(null);
@@ -44,17 +42,11 @@ function App() {
     }
   }, [brainState, audioEngine]);
 
-  // Auto-scroll logs
-  useEffect(() => {
-    if (logsRef.current) {
-      logsRef.current.scrollTop = logsRef.current.scrollHeight;
-    }
-  }, [brainState]);
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans p-4 md:p-8 overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-syn-dark via-[#050510] to-black">
       <div className="max-w-[1600px] mx-auto h-[calc(100vh-4rem)] flex flex-col">
-        <header className="mb-8 flex justify-between items-end flex-none">
+        <header className="mb-8 flex justify-between items-center flex-none">
           <div>
             <h1 className="text-4xl md:text-6xl font-bold font-display text-transparent bg-clip-text bg-gradient-to-r from-syn-cyan via-syn-purple to-syn-cyan animate-pulse tracking-tighter">
               SYNESTHESIA
@@ -63,6 +55,28 @@ function App() {
               NEURAL_INTERFACE // {isConnected ? 'ONLINE' : 'OFFLINE'}
             </p>
           </div>
+          
+          {/* Brain State - Centered in header */}
+          <div className="inline-flex items-center gap-6 px-6 py-3 rounded-xl border border-white/10 bg-card/50 backdrop-blur-md shadow-lg">
+            <div className="text-center">
+              <div className="text-2xl font-display font-bold text-syn-green">
+                {brainState ? (
+                  brainState.focus > brainState.relax 
+                    ? (brainState.focus > brainState.neutral ? 'FOCUS' : 'NEUTRAL')
+                    : (brainState.relax > brainState.neutral ? 'RELAX' : 'NEUTRAL')
+                ) : '--'}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">CURRENT STATE</div>
+            </div>
+            <div className="h-10 w-px bg-white/10"></div>
+            <div className="text-center">
+              <div className="text-2xl font-display font-bold text-syn-purple">
+                {brainState ? `${(Math.max(brainState.focus || 0, brainState.relax || 0, brainState.neutral || 0) * 100).toFixed(0)}%` : '--'}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">INTENSITY</div>
+            </div>
+          </div>
+
           <div className="text-right hidden md:flex flex-col items-end gap-2">
              <div className="flex items-center gap-2 text-xs font-mono">
                {isConnected ? (
@@ -88,11 +102,8 @@ function App() {
         </header>
         
         <main className="grid grid-cols-1 md:grid-cols-12 gap-6 flex-1 min-h-0">
-          {/* Left Column: Controls & Status */}
+          {/* Left Column: Controls */}
           <div className="md:col-span-3 flex flex-col gap-6 overflow-y-auto pr-2">
-            <div className="flex-none">
-              <StatusPanel />
-            </div>
             <div className="flex-none">
               <VisualSettings 
                 onAlgorithmChange={(algo) => setSelectedAlgorithm(algo as AlgorithmType)}
@@ -116,9 +127,6 @@ function App() {
                 }}
               />
             </div>
-            <div className="flex-none">
-              <AudioControls />
-            </div>
           </div>
 
           {/* Center Column: Visualizer */}
@@ -126,6 +134,7 @@ function App() {
             <div className="absolute inset-0">
               <VisualCanvas params={activeVisualParams} algorithm={selectedAlgorithm} />
             </div>
+
             {manualParams && (
               <div className="absolute top-4 left-4 text-xs font-mono text-syn-green bg-syn-green/10 border border-syn-green/30 px-3 py-1 rounded backdrop-blur">
                 MANUAL CONTROL
@@ -138,45 +147,13 @@ function App() {
             )}
           </div>
           
-          {/* Right Column: EEG Data */}
+          {/* Right Column: EEG + Audio */}
           <div className="md:col-span-3 flex flex-col gap-6 overflow-y-auto">
             <div className="flex-none">
               <EEGDisplay data={brainStateHistory} />
             </div>
-            <div className="h-[200px] rounded-xl border border-white/10 bg-card/30 backdrop-blur p-4 font-mono text-xs text-syn-cyan/70 overflow-hidden flex-none flex flex-col">
-               <div className="mb-2 text-white/50 border-b border-white/10 pb-1 flex-none">SYSTEM LOGS</div>
-               <div ref={logsRef} className="space-y-1 overflow-y-auto flex-1">
-                 <p className="opacity-50">[SYSTEM] Initializing Neural Core...</p>
-                 <p className="opacity-50">[SYSTEM] Audio Engine warm-up complete</p>
-                 {isConnected ? (
-                   <p className="text-syn-green">[NET] WebSocket Connected</p>
-                 ) : (
-                   <p className="text-destructive">[NET] WebSocket Disconnected</p>
-                 )}
-                 {brainState && (
-                   <p className="text-syn-purple">
-                     [EEG] Delta:{brainState.delta_power?.toFixed(2)} Alpha:{brainState.alpha_power?.toFixed(2)}
-                   </p>
-                 )}
-               </div>
-            </div>
-            
-            <div className="rounded-xl border border-white/10 bg-card/30 backdrop-blur p-4 flex-1">
-                <div className="mb-2 text-white/50 border-b border-white/10 pb-1 text-xs font-mono">BRAIN STATE</div>
-                <div className="grid grid-cols-2 gap-4 mt-4">
-                    <div className="text-center">
-                        <div className="text-2xl font-display font-bold text-syn-green">
-                          {brainState ? (brainState.focus_metric > 0.6 ? 'FOCUS' : 'RELAX') : '--'}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">CURRENT STATE</div>
-                    </div>
-                    <div className="text-center">
-                        <div className="text-2xl font-display font-bold text-syn-purple">
-                          {brainState ? `${((brainState.focus_metric || 0) * 100).toFixed(0)}%` : '--'}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground">INTENSITY</div>
-                    </div>
-                </div>
+            <div className="flex-none">
+              <AudioControls />
             </div>
           </div>
         </main>

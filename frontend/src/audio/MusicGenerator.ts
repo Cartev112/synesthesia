@@ -26,13 +26,13 @@ const SCALES = {
 // Common chord progressions (scale degrees)
 const PROGRESSIONS = [
   [0, 4, 0, 4],       // I-V-I-V (classic)
-  [0, 3, 4, 0],       // I-IV-V-I (authentic cadence)
-  [0, 5, 3, 4],       // I-vi-IV-V (50s progression)
+  [1, 4, 0, 5],       // I-IV-V-I (authentic cadence)
+  [2, 5, 3, 4],       // I-vi-IV-V (50s progression)
   [0, 4, 5, 3],       // I-V-vi-IV (pop progression)
-  [0, 3, 5, 4],       // I-IV-vi-V
+  [2, 3, 5, 4],       // I-IV-vi-V
   [5, 3, 4, 0],       // vi-IV-V-I (emotional)
   [0, 2, 3, 4],       // I-iii-IV-V
-  [0, 4, 2, 5],       // I-V-iii-vi (deceptive)
+  [1, 4, 2, 5],       // I-V-iii-vi (deceptive)
 ];
 
 export class MusicGenerator {
@@ -43,7 +43,7 @@ export class MusicGenerator {
   private currentChordRoot: number = 0; // Root note of current chord
   private nextChord: number[] = [0, 4, 7]; // Next triad for passing notes
   private nextChordRoot: number = 0; // Next chord root
-  private tempo: number = 120; // Fixed tempo
+  private tempo: number = 80; // Fixed tempo
   private textureArpIndex: number = 0; // Current position in arpeggio
   private progressionIndex: number = 0; // Position in current progression
   private currentProgression: number[] = PROGRESSIONS[0]; // Active progression
@@ -55,8 +55,8 @@ export class MusicGenerator {
   generateStep(brainState: BrainState): Record<string, MidiEvent[]> {
     const stepDuration = 60 / this.tempo / 4; // 16th note duration
 
-    // Update chord every 2 beats (8 steps at 16th note resolution)
-    if (this.stepCount % 8 === 0) {
+    // Update chord every 4 beats (16 steps at 16th note resolution)
+    if (this.stepCount % 16 === 0) {
       this.updateChord();
     }
 
@@ -134,11 +134,11 @@ export class MusicGenerator {
   private generateBass(stepDuration: number, brainState: BrainState): MidiEvent[] {
     const events: MidiEvent[] = [];
 
-    // Play chord root on beat 1 of every 2 beats (when chord changes)
-    if (this.stepCount % 8 === 0) {
+    // Play chord root on beat 1 of every 4 beats (when chord changes)
+    if (this.stepCount % 16 === 0) {
       const note = this.currentRoot + this.currentChordRoot - 24; // Two octaves below
       // Shorten duration if passing note will play
-      const duration = brainState.focus > 0.5 ? 3.5 : 7.5; // Stop before passing note or hold full duration
+      const duration = brainState.focus > 0.5 ? 7 : 15.5; // Stop before passing note or hold full duration
       events.push({
         note,
         velocity: 85 + Math.random() * 15,
@@ -146,8 +146,8 @@ export class MusicGenerator {
         time: 0,
       });
     }
-    // Add passing note on beat 2 (step 4) when focus is high
-    else if (this.stepCount % 8 === 4 && brainState.focus > 0.5) {
+    // Add passing note on beat 3 (step 8) when focus is high
+    else if (this.stepCount % 16 === 8 && brainState.focus > 0.5) {
       // Find a passing note between current and next chord root
       const currentNote = this.currentChordRoot;
       const nextNote = this.nextChordRoot;
@@ -187,13 +187,13 @@ export class MusicGenerator {
     const events: MidiEvent[] = [];
 
     // Play full triad when chord changes
-    if (this.stepCount % 8 === 0) {
+    if (this.stepCount % 16 === 0) {
       // Play all three notes of the triad
       for (const chordTone of this.currentChord) {
         events.push({
           note: this.currentRoot + chordTone,
           velocity: 45 + Math.random() * 15,
-          duration: stepDuration * 8, // Hold for almost 2 beats
+          duration: stepDuration * 16, // Hold for 4 beats
           time: 0,
         });
       }

@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Palette, Zap, Sparkles } from 'lucide-react';
+import { buildApiUrl } from '@/utils/env';
 
 interface Algorithm {
   id: string;
@@ -26,10 +27,12 @@ interface VisualSettingsProps {
   onPresetParamsChange?: (params: any) => void;
 }
 
+const DISABLED_ALGORITHMS = new Set(['lissajous', 'reaction_diffusion']);
+
 export function VisualSettings({ onAlgorithmChange, onPresetChange, onPresetParamsChange }: VisualSettingsProps) {
   const [algorithms, setAlgorithms] = useState<Algorithm[]>([]);
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [selectedAlgorithm, setSelectedAlgorithm] = useState<string>('harmonograph');
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState<string>('hyperspace_portal');
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -37,9 +40,11 @@ export function VisualSettings({ onAlgorithmChange, onPresetChange, onPresetPara
     // Fetch available algorithms and presets
     const fetchOptions = async () => {
       try {
+        const algorithmsUrl = buildApiUrl('/api/v1/visual/algorithms');
+        const presetsUrl = buildApiUrl('/api/v1/visual/presets');
         const [algoRes, presetRes] = await Promise.all([
-          fetch('http://localhost:8000/api/v1/visual/algorithms'),
-          fetch('http://localhost:8000/api/v1/visual/presets')
+          fetch(algorithmsUrl),
+          fetch(presetsUrl)
         ]);
 
         const algoData = await algoRes.json();
@@ -68,7 +73,7 @@ export function VisualSettings({ onAlgorithmChange, onPresetChange, onPresetPara
     
     // Fetch and apply preset parameters
     try {
-      const response = await fetch('http://localhost:8000/api/v1/visual/preset', {
+      const response = await fetch(buildApiUrl('/api/v1/visual/preset'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -130,7 +135,9 @@ export function VisualSettings({ onAlgorithmChange, onPresetChange, onPresetPara
         <div>
           <div className="text-xs font-mono text-muted-foreground mb-2">ALGORITHM</div>
           <div className="space-y-2">
-            {algorithms.map((algo) => (
+            {algorithms
+              .filter((algo) => !DISABLED_ALGORITHMS.has(algo.id))
+              .map((algo) => (
               <button
                 key={algo.id}
                 onClick={() => handleAlgorithmSelect(algo.id)}

@@ -52,7 +52,9 @@ export function VisualCanvas({ params, algorithm = 'harmonograph' }: VisualCanva
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const paramsRef = useRef(params);
   const algorithmRef = useRef(algorithm);
-  const startTimeRef = useRef(Date.now());
+  const lastFrameTimeRef = useRef(Date.now());
+  const accumulatedPhaseRef = useRef(0);
+  const accumulatedRotationRef = useRef(0);
 
   // Keep refs in sync with props for animation loop
   useEffect(() => {
@@ -73,12 +75,13 @@ export function VisualCanvas({ params, algorithm = 'harmonograph' }: VisualCanva
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
       
+      // Set canvas internal size to match display size * DPR for crisp rendering
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       
+      // Scale context to account for DPR
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
       ctx.scale(dpr, dpr);
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
     };
 
     window.addEventListener('resize', resize);
@@ -98,9 +101,20 @@ export function VisualCanvas({ params, algorithm = 'harmonograph' }: VisualCanva
       const colorCycleSpeed = p.color_cycle_speed ?? 0.2;
       const trailLength = p.trail_length ?? 0.1;
       const speedMult = p.speed_multiplier ?? 1.0;
+      const rotSpeed = p.rotation_speed ?? 0;
       
-      // Time in seconds
-      const t = (Date.now() - startTimeRef.current) / 1000;
+      // Calculate delta time
+      const now = Date.now();
+      const dt = (now - lastFrameTimeRef.current) / 1000;
+      lastFrameTimeRef.current = now;
+      
+      // Accumulate phase based on current speed (prevents jumps when speed changes)
+      accumulatedPhaseRef.current += dt * speedMult;
+      accumulatedRotationRef.current += dt * rotSpeed;
+      
+      // Use accumulated phase instead of raw time
+      const t = accumulatedPhaseRef.current;
+      const rotation = accumulatedRotationRef.current;
       
       // Clear with trail effect
       ctx.fillStyle = `rgba(5, 5, 10, ${1 - trailLength})`;
@@ -110,22 +124,25 @@ export function VisualCanvas({ params, algorithm = 'harmonograph' }: VisualCanva
       ctx.beginPath();
       let customLayers: ColoredLayer[] | undefined;
       
+      // Pass both time and rotation to algorithms
+      const renderParams = { ...p, _accumulatedRotation: rotation };
+      
       switch (algo) {
         case 'lissajous':
-          renderLissajous(ctx, p, width, height, t);
+          renderLissajous(ctx, renderParams, width, height, t);
           break;
         case 'lorenz':
-          renderLorenz(ctx, p, width, height, t);
+          renderLorenz(ctx, renderParams, width, height, t);
           break;
         case 'reaction_diffusion':
-          renderReactionDiffusion(ctx, p, width, height, t);
+          renderReactionDiffusion(ctx, renderParams, width, height, t);
           break;
         case 'hyperspace_portal':
-          customLayers = renderHyperspacePortal(ctx, p, width, height, t)?.layers;
+          customLayers = renderHyperspacePortal(ctx, renderParams, width, height, t)?.layers;
           break;
         case 'harmonograph':
         default:
-          renderHarmonograph(ctx, p, width, height, t);
+          renderHarmonograph(ctx, renderParams, width, height, t);
           break;
       }
       
@@ -145,7 +162,7 @@ export function VisualCanvas({ params, algorithm = 'harmonograph' }: VisualCanva
         ctx.restore();
       } else {
         // Dynamic multi-pass stroke for richer color layering
-        const hue = (hueBase + t * colorCycleSpeed * 60 * speedMult) % 360;
+        const hue = (hueBase + t * colorCycleSpeed * 60) % 360;
         const hues = [hue, (hue + 42) % 360, (hue + 300) % 360];
         const widths = [2.6, 1.6, 0.9];
         const blurs = [18, 10, 4];
