@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { buildWebSocketUrl } from '@/utils/env';
 
 interface BrainState {
   [key: string]: any;
@@ -29,19 +30,14 @@ export function useWebSocket(): UseWebSocketReturn {
   const [visualParams, setVisualParams] = useState<VisualParams | null>(null);
   const [brainStateHistory, setBrainStateHistory] = useState<BrainState[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const messageCountRef = useRef(0);
   
   // Generate a random session ID for now
   const sessionId = useRef(`session-${Math.random().toString(36).substr(2, 9)}`).current;
 
   useEffect(() => {
     // Connect to WebSocket - use backend server directly
-    const isDev = import.meta.env.DEV;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    
-    // In development, connect directly to backend server
-    // In production, use the same host (assuming backend is proxied)
-    const wsHost = isDev ? 'localhost:8000' : window.location.host;
-    const wsUrl = `${protocol}//${wsHost}/ws/stream/${sessionId}`;
+    const wsUrl = buildWebSocketUrl(`/ws/stream/${sessionId}`);
     
     console.log(`Connecting to WebSocket: ${wsUrl}`);
     const ws = new WebSocket(wsUrl);
@@ -64,6 +60,12 @@ export function useWebSocket(): UseWebSocketReturn {
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
+        
+        // Track message count for debugging
+        messageCountRef.current++;
+        if (messageCountRef.current % 50 === 0) {
+          console.log(`WebSocket: Received ${messageCountRef.current} messages`);
+        }
         
         switch (message.type) {
           case 'brain_state':
