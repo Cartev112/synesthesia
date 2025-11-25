@@ -192,3 +192,31 @@ def midi_to_frequency(midi_note: int) -> float:
         Frequency in Hz
     """
     return 440.0 * (2.0 ** ((midi_note - 69) / 12.0))
+
+
+def snap_to_scale(note: int, scale: Scale) -> int:
+    """
+    Snap a MIDI note to the nearest note in the provided scale.
+    
+    Args:
+        note: MIDI note number to snap
+        scale: Target musical scale
+        
+    Returns:
+        Nearest MIDI note that belongs to the scale
+    """
+    # Build a small lookup of scale notes across a reasonable range
+    candidates = []
+    for octave in range(-2, 6):  # Cover wide musical range
+        for interval in scale.intervals:
+            midi_note = scale.root + (octave * 12) + interval
+            if 0 <= midi_note <= 127:
+                candidates.append(midi_note)
+    
+    # Fallback to original note if something goes wrong
+    if not candidates:
+        return int(np.clip(note, 0, 127))
+    
+    # Choose closest candidate
+    closest = min(candidates, key=lambda n: abs(n - note))
+    return int(np.clip(closest, 0, 127))

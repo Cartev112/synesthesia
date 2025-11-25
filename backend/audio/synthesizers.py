@@ -17,10 +17,10 @@ logger = get_logger(__name__)
 @dataclass
 class ADSREnvelope:
     """ADSR envelope parameters."""
-    attack: float = 0.01   # seconds
-    decay: float = 0.1     # seconds
-    sustain: float = 0.7   # level (0-1)
-    release: float = 0.2   # seconds
+    attack: float = 0.005   # seconds - fast but not instant to avoid clicks
+    decay: float = 0.05     # seconds
+    sustain: float = 0.8    # level (0-1)
+    release: float = 0.05   # seconds - short release for buffer continuity
 
 
 class SynthesizerBase(ABC):

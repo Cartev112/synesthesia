@@ -13,7 +13,7 @@ import numpy as np
 from backend.eeg.simulator import StreamingEEGSimulator
 from backend.signal_processing import SignalPreprocessor, FeatureExtractor, CircularBuffer
 from backend.ml import ArtifactClassifier, MentalStateTracker, MentalStateClassifier
-from backend.music import MusicGenerator
+from backend.visual import VisualParameterGenerator
 from backend.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -33,6 +33,8 @@ class RealtimePipeline:
         use_simulator: bool = True,
         on_brain_state: Optional[Callable] = None,
         on_music_events: Optional[Callable] = None,
+        on_visual_params: Optional[Callable] = None,
+        on_audio_buffer: Optional[Callable] = None,
         on_error: Optional[Callable] = None
     ):
         """
@@ -43,6 +45,7 @@ class RealtimePipeline:
             use_simulator: Use simulator instead of real hardware
             on_brain_state: Callback for brain state updates
             on_music_events: Callback for music events
+            on_visual_params: Callback for visual parameters
             on_error: Callback for errors
         """
         self.sampling_rate = sampling_rate
@@ -51,6 +54,8 @@ class RealtimePipeline:
         # Callbacks
         self.on_brain_state = on_brain_state
         self.on_music_events = on_music_events
+        self.on_visual_params = on_visual_params
+        self.on_audio_buffer = on_audio_buffer
         self.on_error = on_error
         
         # Components
@@ -71,13 +76,9 @@ class RealtimePipeline:
         self.state_classifier = MentalStateClassifier()
         self.state_tracker = MentalStateTracker(classifier=self.state_classifier)
         
-        # Music generator
-        self.music_generator = MusicGenerator(
-            enable_bass=True,
-            enable_harmony=True,
-            enable_melody=True,
-            enable_texture=False
-        )
+        # Music generator (drives visual/brain-state events; audio now handled fully on frontend)
+        # Visual parameter generator
+        self.visual_generator = VisualParameterGenerator()
         
         # State
         self.is_running = False
@@ -90,8 +91,7 @@ class RealtimePipeline:
             'total_latency': [],
             'preprocessing_time': [],
             'feature_extraction_time': [],
-            'ml_inference_time': [],
-            'music_generation_time': []
+            'ml_inference_time': []
         }
         
         logger.info(
@@ -212,18 +212,21 @@ class RealtimePipeline:
                             **features
                         }
                     
-                    # 7. Generate music
-                    t0 = time.time()
-                    self.music_generator.update_brain_state(brain_state)
-                    music_events = self.music_generator.generate_step()
-                    self.metrics['music_generation_time'].append(time.time() - t0)
+                    # 7. (Music generation removed - handled on frontend)
+                    music_events = {}
                     
-                    # 8. Send updates via callbacks
+                    # 8. Generate visual parameters
+                    visual_params = self.visual_generator.generate_params(brain_state)
+                    
+                    # 9. Send updates via callbacks
                     if self.on_brain_state:
                         await self.on_brain_state(brain_state)
                     
                     if self.on_music_events:
                         await self.on_music_events(music_events)
+                    
+                    if self.on_visual_params:
+                        await self.on_visual_params(visual_params)
                     
                     # Track total latency
                     total_latency = time.time() - loop_start
@@ -293,6 +296,7 @@ class RealtimePipeline:
             self.eeg_source.set_mental_state(state, intensity)
             logger.debug("simulator_state_set", state=state, intensity=intensity)
     
+    
     def get_metrics(self) -> Dict:
         """Get performance metrics."""
         if not self.metrics['total_latency']:
@@ -303,7 +307,6 @@ class RealtimePipeline:
             'avg_preprocessing_ms': np.mean(self.metrics['preprocessing_time']) * 1000,
             'avg_feature_extraction_ms': np.mean(self.metrics['feature_extraction_time']) * 1000,
             'avg_ml_inference_ms': np.mean(self.metrics['ml_inference_time']) * 1000 if self.metrics['ml_inference_time'] else 0,
-            'avg_music_generation_ms': np.mean(self.metrics['music_generation_time']) * 1000,
             'total_samples_processed': self.sample_count,
             'session_duration_s': time.time() - self.session_start_time if self.session_start_time else 0
         }
@@ -314,6 +317,5 @@ class RealtimePipeline:
             'is_running': self.is_running,
             'is_calibrated': self.is_calibrated,
             'sample_count': self.sample_count,
-            'music_parameters': self.music_generator.get_current_parameters(),
             'metrics': self.get_metrics()
         }

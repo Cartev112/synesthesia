@@ -6,10 +6,10 @@ to create responsive music from brain states.
 """
 
 from typing import Dict, List, Optional
-import time
 import numpy as np
 
 from backend.music.cellular_automaton import MusicalCellularAutomaton, MidiEvent
+from backend.music.scales import Scale, snap_to_scale
 from backend.music.mappings import LayeredMusicMapper
 from backend.core.logging import get_logger
 
@@ -64,10 +64,12 @@ class MusicGenerator:
             'relax': 0.5,
             'neutral': 0.5,
         }
+        self.current_scale: Scale = self.melody_ca.scale
+        self._cached_layer_params: Optional[Dict[str, Dict]] = None
         
-        # Timing
-        self.last_step_time = time.time()
+        # Timing - use sample-accurate counter instead of wall-clock
         self.step_count = 0
+        self.samples_generated = 0  # Track total samples for precise timing
         
         logger.info(
             "music_generator_initialized",
@@ -82,9 +84,18 @@ class MusicGenerator:
             brain_state: New brain state values
         """
         self.current_brain_state = brain_state
+        self._cached_layer_params = self.mapper.map_all_layers(brain_state)
         
         # Update melody CA with brain state
         self.melody_ca.update_from_brain_state(brain_state)
+        
+        # Keep CA scale/pitch aligned with mapped melody parameters
+        melody_params = self._cached_layer_params['melody']
+        self.melody_ca.set_scale(melody_params['scale'], root_note=melody_params['pitch_center'])
+        self.melody_ca.pitch_center = melody_params['pitch_center']
+        self.melody_ca.tempo = melody_params['tempo']
+        self.melody_ca.density = melody_params['density']
+        self.current_scale = self.melody_ca.scale
         
         logger.debug(
             "brain_state_updated",
@@ -96,40 +107,69 @@ class MusicGenerator:
         """
         Generate one step of music across all layers.
         
+        This is called once per audio buffer and generates exactly one musical step.
+        Timing is sample-accurate, not wall-clock based.
+        
         Returns:
             Dictionary mapping layer names to MIDI events
         """
-        events_by_layer = {}
+        if self._cached_layer_params is None:
+            self._cached_layer_params = self.mapper.map_all_layers(self.current_brain_state)
+        layer_params = self._cached_layer_params
         
-        # Get layer parameters from brain state
-        layer_params = self.mapper.map_all_layers(self.current_brain_state)
-        
-        # Generate melody layer (CA-based)
-        if self.layers_enabled['melody']:
-            melody_events = self.melody_ca.step()
-            events_by_layer['melody'] = melody_events
-        
-        # Generate bass layer
-        if self.layers_enabled['bass']:
-            bass_events = self._generate_bass(layer_params['bass'])
-            events_by_layer['bass'] = bass_events
-        
-        # Generate harmony layer
-        if self.layers_enabled['harmony']:
-            harmony_events = self._generate_harmony(layer_params['harmony'])
-            events_by_layer['harmony'] = harmony_events
-        
-        # Generate texture layer
-        if self.layers_enabled['texture']:
-            texture_events = self._generate_texture(layer_params['texture'])
-            events_by_layer['texture'] = texture_events
+        # Generate exactly one step per call - no wall-clock timing
+        # The audio engine calls us at the correct rate based on buffer size
+        time_offset = 0.0  # Events start at beginning of this buffer
+        events_by_layer = self._generate_layers(layer_params, time_offset)
         
         self.step_count += 1
-        self.last_step_time = time.time()
         
         return events_by_layer
     
-    def _generate_bass(self, params: Dict) -> List[MidiEvent]:
+    def _generate_layers(self, layer_params: Dict[str, Dict], time_offset: float) -> Dict[str, List[MidiEvent]]:
+        """
+        Generate all enabled layers for a single musical step.
+        """
+        layer_events: Dict[str, List[MidiEvent]] = {}
+        
+        if self.layers_enabled['melody']:
+            melody_events = self.melody_ca.step(time_offset=time_offset)
+            layer_events['melody'] = melody_events
+        
+        if self.layers_enabled['bass']:
+            bass_events = self._generate_bass(layer_params['bass'], time_offset)
+            layer_events['bass'] = bass_events
+        
+        if self.layers_enabled['harmony']:
+            harmony_events = self._generate_harmony(layer_params['harmony'], time_offset)
+            layer_events['harmony'] = harmony_events
+        
+        if self.layers_enabled['texture']:
+            texture_events = self._generate_texture(layer_params['texture'], time_offset)
+            layer_events['texture'] = texture_events
+        
+        return layer_events
+    
+    def _merge_events(
+        self,
+        existing: Dict[str, List[MidiEvent]],
+        new_events: Dict[str, List[MidiEvent]]
+    ) -> Dict[str, List[MidiEvent]]:
+        """Merge two event dictionaries, concatenating per-layer lists."""
+        for layer, events in new_events.items():
+            if layer not in existing:
+                existing[layer] = []
+            existing[layer].extend(events)
+        return existing
+
+    def _choose_scale_note_in_range(self, pitch_min: int, pitch_max: int) -> int:
+        """Pick a note in range and snap it to the current scale."""
+        candidate = np.random.randint(pitch_min, pitch_max + 1)
+        snapped = snap_to_scale(candidate, self.current_scale)
+        # Keep within the requested range to avoid jumping octaves
+        return int(np.clip(snapped, pitch_min, pitch_max))
+    
+    def _generate_bass(self, params: Dict, time_offset: float) -> List[MidiEvent]:
         """
         Generate bass/rhythm layer events.
         
@@ -147,24 +187,24 @@ class MusicGenerator:
         if np.random.random() < density:
             # Choose bass note from range
             pitch_min, pitch_max = params['pitch_range']
-            note = np.random.randint(pitch_min, pitch_max + 1)
+            note = self._choose_scale_note_in_range(pitch_min, pitch_max)
             
             # Syncopation: occasionally offset timing
             syncopation = params['syncopation']
-            time_offset = 0.0
+            event_time = time_offset
             if np.random.random() < syncopation:
-                time_offset = np.random.uniform(-0.05, 0.05)
+                event_time += np.random.uniform(-0.05, 0.05)
             
             events.append(MidiEvent(
                 note=note,
                 velocity=np.random.randint(80, 110),
                 duration=params['note_duration'],
-                time=time_offset
+                time=event_time
             ))
         
         return events
     
-    def _generate_harmony(self, params: Dict) -> List[MidiEvent]:
+    def _generate_harmony(self, params: Dict, time_offset: float) -> List[MidiEvent]:
         """
         Generate harmonic pad layer events.
         
@@ -198,15 +238,17 @@ class MusicGenerator:
             
             # Create chord events
             for interval in intervals:
+                snapped_note = snap_to_scale(root + interval, self.current_scale)
                 events.append(MidiEvent(
-                    note=root + interval,
+                    note=snapped_note,
                     velocity=np.random.randint(40, 60),
-                    duration=params['note_duration']
+                    duration=params['note_duration'],
+                    time=time_offset
                 ))
         
         return events
     
-    def _generate_texture(self, params: Dict) -> List[MidiEvent]:
+    def _generate_texture(self, params: Dict, time_offset: float) -> List[MidiEvent]:
         """
         Generate textural elements (sparkle notes).
         
@@ -241,12 +283,14 @@ class MusicGenerator:
                 # Neutral: random
                 note = np.random.randint(pitch_min, pitch_max + 1)
             
+            note = snap_to_scale(note, self.current_scale)
             vel_min, vel_max = params['velocity_range']
             
             events.append(MidiEvent(
                 note=note,
                 velocity=np.random.randint(vel_min, vel_max),
-                duration=params['note_duration']
+                duration=params['note_duration'],
+                time=time_offset
             ))
         
         return events
@@ -276,11 +320,14 @@ class MusicGenerator:
         """Reset the music generator to initial state."""
         self.melody_ca.reset()
         self.step_count = 0
+        self.samples_generated = 0
+        self._cached_layer_params = None
         self.current_brain_state = {
             'focus': 0.5,
             'relax': 0.5,
             'neutral': 0.5,
         }
+        self.current_scale = self.melody_ca.scale
         logger.info("music_generator_reset")
     
     def get_current_parameters(self) -> Dict:

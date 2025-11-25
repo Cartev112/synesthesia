@@ -6,7 +6,6 @@ Integrates synthesizers, effects, and mixer with the music generator.
 
 from typing import Dict, List, Optional, Callable
 import numpy as np
-import queue
 import threading
 import time
 
@@ -51,8 +50,9 @@ class AudioEngine:
     def __init__(
         self,
         sample_rate: int = 44100,
-        buffer_size: int = 512,
-        music_generator: Optional[MusicGenerator] = None
+        buffer_size: Optional[int] = None,
+        music_generator: Optional[MusicGenerator] = None,
+        on_audio_buffer: Optional[Callable] = None
     ):
         """
         Initialize audio engine.
@@ -61,34 +61,35 @@ class AudioEngine:
             sample_rate: Audio sample rate in Hz
             buffer_size: Audio buffer size in samples
             music_generator: MusicGenerator instance (optional)
+            on_audio_buffer: Callback for audio buffers (optional)
         """
         self.sample_rate = sample_rate
-        self.buffer_size = buffer_size
+        self.buffer_size = buffer_size or 0  # real value set after we know tempo
+        self.buffer_duration = 0.0
         
         # Create mixer
-        self.mixer = AudioMixer(sample_rate=sample_rate, buffer_size=buffer_size)
+        self.mixer = AudioMixer(sample_rate=sample_rate, buffer_size=self.buffer_size)
         
         # Music generator
         self.music_generator = music_generator
-        
-        # Audio buffer queue
-        self.audio_queue = queue.Queue(maxsize=10)
+        # Align buffer to musical step so notes are not truncated
+        self._sync_buffer_to_tempo()
         
         # Playback state
         self.is_playing = False
         self.playback_thread = None
         
         # Timing
-        self.step_duration = 0.125  # 125ms per step (8th notes at 120 BPM)
+        self.step_duration = 0.125  # kept for reference; actual step uses generator tempo
         self.current_time = 0.0
         
         # Callbacks
-        self.on_audio_buffer: Optional[Callable] = None
+        self.on_audio_buffer = on_audio_buffer
         
         logger.info(
             "audio_engine_initialized",
             sample_rate=sample_rate,
-            buffer_size=buffer_size
+            buffer_size=self.buffer_size
         )
     
     def setup_default_tracks(self):
@@ -106,7 +107,24 @@ class AudioEngine:
     def set_music_generator(self, music_generator: MusicGenerator):
         """Set the music generator."""
         self.music_generator = music_generator
+        self._sync_buffer_to_tempo()
         logger.info("music_generator_set")
+
+    def _sync_buffer_to_tempo(self):
+        """
+        Align buffer size to the current musical step duration
+        so that notes aren't truncated into tiny glitchy chunks.
+        """
+        if self.music_generator:
+            step_duration = self.music_generator.get_step_duration()
+        else:
+            step_duration = 0.125  # fallback to 16th at 120 BPM
+        new_size = max(256, int(round(step_duration * self.sample_rate)))
+        self.buffer_size = new_size
+        self.buffer_duration = new_size / self.sample_rate
+        # Keep mixer in sync
+        self.mixer.buffer_size = new_size
+        logger.info("buffer_aligned_to_step", buffer_size=new_size, step_duration=step_duration)
     
     def set_track_synthesizer(self, track_name: str, synth_type: str):
         """
@@ -143,19 +161,25 @@ class AudioEngine:
         else:
             logger.warning("track_not_found", track=track_name)
     
-    def generate_audio_buffer(self) -> np.ndarray:
+    def generate_audio_buffer(self) -> tuple[np.ndarray, int, float]:
         """
         Generate one audio buffer from music generator.
         
         Returns:
-            Audio samples for one buffer
+            (Audio samples, total events rendered, max amplitude)
         """
         if self.music_generator is None:
             # Return silence if no generator
-            return np.zeros(self.buffer_size)
+            silent = np.zeros(self.buffer_size, dtype=np.float32)
+            return silent, 0, 0.0
+        
+        # Keep buffer sized to current tempo
+        if self.music_generator:
+            self._sync_buffer_to_tempo()
         
         # Generate musical events
         events = self.music_generator.generate_step()
+        total_events = sum(len(v) for v in events.values())
         
         # Calculate buffer duration
         buffer_duration = self.buffer_size / self.sample_rate
@@ -171,7 +195,12 @@ class AudioEngine:
             # Truncate
             audio = audio[:self.buffer_size]
         
-        return audio
+        # Convert to float32 for transport/playback
+        audio = audio.astype(np.float32, copy=False)
+        
+        max_amp = float(np.max(np.abs(audio))) if audio.size else 0.0
+        
+        return audio, total_events, max_amp
     
     def start_playback(self):
         """Start real-time audio playback."""
@@ -199,40 +228,32 @@ class AudioEngine:
         if self.playback_thread:
             self.playback_thread.join(timeout=1.0)
         
-        # Clear queue
-        while not self.audio_queue.empty():
-            try:
-                self.audio_queue.get_nowait()
-            except queue.Empty:
-                break
-        
         logger.info("playback_stopped")
     
     def _playback_loop(self):
         """Playback loop running in separate thread."""
         logger.info("playback_loop_started")
+        buffer_count = 0
         
         while self.is_playing:
             try:
                 # Generate audio buffer
-                audio_buffer = self.generate_audio_buffer()
-                
-                # Add to queue (blocks if queue is full)
-                self.audio_queue.put(audio_buffer, timeout=1.0)
+                audio_buffer, event_count, max_amp = self.generate_audio_buffer()
                 
                 # Call callback if set
                 if self.on_audio_buffer:
-                    self.on_audio_buffer(audio_buffer)
+                    self.on_audio_buffer(audio_buffer, event_count, max_amp)
+                    buffer_count += 1
+                    # intentionally minimal logging to keep output quiet
                 
                 # Update time
                 buffer_duration = self.buffer_size / self.sample_rate
                 self.current_time += buffer_duration
                 
-                # Sleep to maintain timing
-                time.sleep(buffer_duration * 0.8)  # Sleep slightly less to stay ahead
+                # Sleep to maintain timing - reduced to minimize latency
+                # Sleep 50% of buffer duration to stay ahead while reducing lag
+                time.sleep(buffer_duration * 0.5)
                 
-            except queue.Full:
-                logger.warning("audio_queue_full")
             except Exception as e:
                 logger.exception("playback_loop_error", error=str(e))
         
@@ -248,10 +269,7 @@ class AudioEngine:
         Returns:
             Audio buffer or None if timeout
         """
-        try:
-            return self.audio_queue.get(timeout=timeout)
-        except queue.Empty:
-            return None
+        return None
     
     def render_to_file(
         self,

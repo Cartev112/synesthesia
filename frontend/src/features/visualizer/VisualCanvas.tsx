@@ -1,0 +1,215 @@
+import { useEffect, useRef } from 'react';
+import { Card } from '@/components/ui/card';
+import { 
+  renderLissajous, 
+  renderHarmonograph, 
+  renderLorenz,
+  renderReactionDiffusion,
+  renderHyperspacePortal,
+  hslToRgb,
+  type AlgorithmType,
+  type ColoredLayer
+} from './algorithms';
+
+interface VisualParams {
+  timestamp?: number;
+  frequency_ratio_x?: number;
+  frequency_ratio_y?: number;
+  phase_offset?: number;
+  amplitude_x?: number;
+  amplitude_y?: number;
+  rotation_speed?: number;
+  num_harmonics?: number;
+  hue_base?: number;
+  saturation?: number;
+  brightness?: number;
+  color_cycle_speed?: number;
+  recursion_depth?: number;
+  point_density?: number;
+  trail_length?: number;
+  distortion_amount?: number;
+  speed_multiplier?: number;
+  pulse_frequency?: number;
+  pulse_amplitude?: number;
+  damping_x?: number;
+  damping_y?: number;
+  num_epicycles?: number;
+  epicycle_decay?: number;
+  brain_state?: {
+    focus?: number;
+    relax?: number;
+    neutral?: number;
+  };
+  [key: string]: any;
+}
+
+interface VisualCanvasProps {
+  params?: VisualParams | null;
+  algorithm?: AlgorithmType;
+}
+
+export function VisualCanvas({ params, algorithm = 'harmonograph' }: VisualCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const paramsRef = useRef(params);
+  const algorithmRef = useRef(algorithm);
+  const startTimeRef = useRef(Date.now());
+
+  // Keep refs in sync with props for animation loop
+  useEffect(() => {
+    paramsRef.current = params;
+    algorithmRef.current = algorithm;
+  }, [params, algorithm]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      
+      ctx.scale(dpr, dpr);
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+    };
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    const draw = () => {
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      const p = paramsRef.current || {};
+      const algo = algorithmRef.current;
+      
+      // Extract parameters with defaults
+      const hueBase = p.hue_base ?? 180;
+      const saturation = p.saturation ?? 0.7;
+      const brightness = p.brightness ?? 0.8;
+      const colorCycleSpeed = p.color_cycle_speed ?? 0.2;
+      const trailLength = p.trail_length ?? 0.1;
+      const speedMult = p.speed_multiplier ?? 1.0;
+      
+      // Time in seconds
+      const t = (Date.now() - startTimeRef.current) / 1000;
+      
+      // Clear with trail effect
+      ctx.fillStyle = `rgba(5, 5, 10, ${1 - trailLength})`;
+      ctx.fillRect(0, 0, width, height);
+
+      // Render based on selected algorithm
+      ctx.beginPath();
+      let customLayers: ColoredLayer[] | undefined;
+      
+      switch (algo) {
+        case 'lissajous':
+          renderLissajous(ctx, p, width, height, t);
+          break;
+        case 'lorenz':
+          renderLorenz(ctx, p, width, height, t);
+          break;
+        case 'reaction_diffusion':
+          renderReactionDiffusion(ctx, p, width, height, t);
+          break;
+        case 'hyperspace_portal':
+          customLayers = renderHyperspacePortal(ctx, p, width, height, t)?.layers;
+          break;
+        case 'harmonograph':
+        default:
+          renderHarmonograph(ctx, p, width, height, t);
+          break;
+      }
+      
+      if (customLayers && customLayers.length > 0) {
+        ctx.save();
+        customLayers.forEach(layer => {
+          ctx.globalAlpha = layer.alpha ?? 1;
+          ctx.lineWidth = layer.lineWidth ?? 2;
+          ctx.strokeStyle = layer.color;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.shadowBlur = layer.shadowBlur ?? 0;
+          ctx.shadowColor = layer.color;
+          if (layer.composite) ctx.globalCompositeOperation = layer.composite;
+          ctx.stroke(layer.path);
+        });
+        ctx.restore();
+      } else {
+        // Dynamic multi-pass stroke for richer color layering
+        const hue = (hueBase + t * colorCycleSpeed * 60 * speedMult) % 360;
+        const hues = [hue, (hue + 42) % 360, (hue + 300) % 360];
+        const widths = [2.6, 1.6, 0.9];
+        const blurs = [18, 10, 4];
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        hues.forEach((h, idx) => {
+          const strokeColor = hslToRgb(h, saturation, brightness - idx * 0.08);
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = widths[idx];
+          ctx.shadowBlur = blurs[idx];
+          ctx.shadowColor = strokeColor;
+          ctx.globalAlpha = 0.9 - idx * 0.2;
+          ctx.stroke();
+        });
+
+        ctx.restore();
+      }
+
+      animationFrameId = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
+
+  // Calculate dominant state for display
+  const brainState = params?.brain_state;
+  const dominantState = brainState ? 
+    Object.entries(brainState)
+      .filter(([key]) => ['focus', 'relax', 'neutral'].includes(key))
+      .reduce((a, b) => (b[1] as number) > (a[1] as number) ? b : a, ['neutral', 0])[0]
+    : 'unknown';
+  const dominantValue = brainState?.[dominantState as keyof typeof brainState] ?? 0;
+
+  return (
+    <Card className="h-full w-full overflow-hidden bg-black/80 border-syn-cyan/30 shadow-[0_0_30px_rgba(0,243,255,0.1)]">
+      <canvas 
+        ref={canvasRef} 
+        className="w-full h-full block"
+      />
+      <div className="absolute top-4 right-4 text-xs font-mono text-syn-cyan/50 pointer-events-none flex flex-col items-end gap-1">
+        <span>{algorithm.toUpperCase()}_ACTIVE</span>
+        {params && (
+          <>
+            <span className="text-[10px] text-white/30">
+              State: {dominantState.toUpperCase()} ({(dominantValue * 100).toFixed(0)}%)
+            </span>
+            <span className="text-[10px] text-white/30">
+              {algorithm === 'harmonograph' && `Harmonics: ${params.num_harmonics ?? 5}`}
+              {algorithm === 'lorenz' && `Chaotic Attractor`}
+              {algorithm === 'reaction_diffusion' && `Organic Pattern`}
+              {algorithm === 'hyperspace_portal' && `Portal Symmetry: ${params.portal_symmetry ?? 8}`}
+              {algorithm === 'lissajous' && `Freq: ${(params.frequency_ratio_x ?? 3).toFixed(1)}:${(params.frequency_ratio_y ?? 2).toFixed(1)}`}
+            </span>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}

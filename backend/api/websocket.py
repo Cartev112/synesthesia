@@ -95,12 +95,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             message = await websocket.receive_json()
             message_type = message.get("type")
             
-            logger.debug(
-                "websocket_message_received",
-                session_id=session_id,
-                type=message_type
-            )
-            
             # Handle different message types
             if message_type == "start_session":
                 await handle_start_session(session_id, message)
@@ -158,22 +152,17 @@ async def handle_start_session(session_id: str, message: dict) -> None:
         })
     
     async def on_music_events(events: dict):
-        # Convert MidiEvent objects to dicts
-        serializable_events = {}
-        for layer, layer_events in events.items():
-            serializable_events[layer] = [
-                {
-                    "note": e.note,
-                    "velocity": e.velocity,
-                    "duration": e.duration,
-                    "time": e.time
-                }
-                for e in layer_events
-            ]
-        
+        # Music generation is handled on the frontend now; keep callback for compatibility
         await manager.send_message(session_id, {
             "type": "music_events",
-            "data": serializable_events,
+            "data": events,
+            "timestamp": asyncio.get_event_loop().time()
+        })
+    
+    async def on_visual_params(params: dict):
+        await manager.send_message(session_id, {
+            "type": "visual_params",
+            "data": params,
             "timestamp": asyncio.get_event_loop().time()
         })
     
@@ -189,6 +178,7 @@ async def handle_start_session(session_id: str, message: dict) -> None:
         use_simulator=True,
         on_brain_state=on_brain_state,
         on_music_events=on_music_events,
+        on_visual_params=on_visual_params,
         on_error=on_error
     )
     
@@ -294,11 +284,6 @@ async def handle_calibration_label(session_id: str, message: dict) -> None:
         "progress": progress
     })
     
-    logger.debug(
-        "calibration_sample_added",
-        session_id=session_id,
-        stage=progress.get('stage')
-    )
 
 
 async def handle_calibration_train(session_id: str, message: dict) -> None:

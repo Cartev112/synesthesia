@@ -13,6 +13,16 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+# Helper function to get audio engine from session
+def get_audio_engine_from_session(session_id: Optional[str] = None):
+    """
+    Get audio engine from active session.
+    
+    Backend audio is now disabled; API is kept for compatibility.
+    """
+    raise HTTPException(status_code=503, detail="Backend audio engine is disabled; use frontend audio instead")
+
+
 # Request/Response models
 class SynthesizerConfig(BaseModel):
     """Synthesizer configuration."""
@@ -215,18 +225,26 @@ async def update_track_synthesizer(
         track_name: Track name (bass, harmony, melody, texture)
         config: Synthesizer configuration
     """
-    # TODO: Update session-specific audio engine
-    logger.info(
-        "track_synthesizer_update_requested",
-        track=track_name,
-        synthesizer=config.type
-    )
-    
-    return {
-        "success": True,
-        "track": track_name,
-        "synthesizer": config.type
-    }
+    try:
+        engine = get_audio_engine_from_session()
+        engine.set_track_synthesizer(track_name, config.type)
+        
+        logger.info(
+            "track_synthesizer_updated",
+            track=track_name,
+            synthesizer=config.type
+        )
+        
+        return {
+            "success": True,
+            "track": track_name,
+            "synthesizer": config.type
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("synthesizer_update_failed", track=track_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/tracks/{track_name}/effects")
@@ -241,19 +259,28 @@ async def add_track_effect(
         track_name: Track name
         config: Effect configuration
     """
-    # TODO: Update session-specific audio engine
-    logger.info(
-        "track_effect_add_requested",
-        track=track_name,
-        effect=config.type,
-        parameters=config.parameters
-    )
-    
-    return {
-        "success": True,
-        "track": track_name,
-        "effect": config.type
-    }
+    try:
+        engine = get_audio_engine_from_session()
+        params = config.parameters or {}
+        engine.add_track_effect(track_name, config.type, **params)
+        
+        logger.info(
+            "track_effect_added",
+            track=track_name,
+            effect=config.type,
+            parameters=params
+        )
+        
+        return {
+            "success": True,
+            "track": track_name,
+            "effect": config.type
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("effect_add_failed", track=track_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/tracks/{track_name}/effects/{effect_index}")
@@ -268,18 +295,29 @@ async def remove_track_effect(
         track_name: Track name
         effect_index: Effect index in chain
     """
-    # TODO: Update session-specific audio engine
-    logger.info(
-        "track_effect_remove_requested",
-        track=track_name,
-        effect_index=effect_index
-    )
-    
-    return {
-        "success": True,
-        "track": track_name,
-        "effect_index": effect_index
-    }
+    try:
+        engine = get_audio_engine_from_session()
+        track = engine.mixer.get_track(track_name)
+        if track:
+            track.remove_effect(effect_index)
+            logger.info(
+                "track_effect_removed",
+                track=track_name,
+                effect_index=effect_index
+            )
+        else:
+            raise HTTPException(status_code=404, detail=f"Track {track_name} not found")
+        
+        return {
+            "success": True,
+            "track": track_name,
+            "effect_index": effect_index
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("effect_remove_failed", track=track_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/tracks/{track_name}/volume")
@@ -294,18 +332,26 @@ async def update_track_volume(
         track_name: Track name
         update: Volume update
     """
-    # TODO: Update session-specific audio engine
-    logger.info(
-        "track_volume_update_requested",
-        track=track_name,
-        volume=update.volume
-    )
-    
-    return {
-        "success": True,
-        "track": track_name,
-        "volume": update.volume
-    }
+    try:
+        engine = get_audio_engine_from_session()
+        engine.mixer.set_track_volume(track_name, update.volume)
+        
+        logger.info(
+            "track_volume_updated",
+            track=track_name,
+            volume=update.volume
+        )
+        
+        return {
+            "success": True,
+            "track": track_name,
+            "volume": update.volume
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("volume_update_failed", track=track_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/tracks/{track_name}/mute")
@@ -320,18 +366,26 @@ async def toggle_track_mute(
         track_name: Track name
         mute: Mute state
     """
-    # TODO: Update session-specific audio engine
-    logger.info(
-        "track_mute_toggle_requested",
-        track=track_name,
-        mute=mute
-    )
-    
-    return {
-        "success": True,
-        "track": track_name,
-        "mute": mute
-    }
+    try:
+        engine = get_audio_engine_from_session()
+        engine.mixer.set_track_mute(track_name, mute)
+        
+        logger.info(
+            "track_mute_toggled",
+            track=track_name,
+            mute=mute
+        )
+        
+        return {
+            "success": True,
+            "track": track_name,
+            "mute": mute
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("mute_toggle_failed", track=track_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/tracks/{track_name}/solo")
@@ -346,18 +400,26 @@ async def toggle_track_solo(
         track_name: Track name
         solo: Solo state
     """
-    # TODO: Update session-specific audio engine
-    logger.info(
-        "track_solo_toggle_requested",
-        track=track_name,
-        solo=solo
-    )
-    
-    return {
-        "success": True,
-        "track": track_name,
-        "solo": solo
-    }
+    try:
+        engine = get_audio_engine_from_session()
+        engine.mixer.set_track_solo(track_name, solo)
+        
+        logger.info(
+            "track_solo_toggled",
+            track=track_name,
+            solo=solo
+        )
+        
+        return {
+            "success": True,
+            "track": track_name,
+            "solo": solo
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("solo_toggle_failed", track=track_name, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/master/volume")
@@ -368,10 +430,44 @@ async def update_master_volume(update: VolumeUpdate):
     Args:
         update: Volume update
     """
-    # TODO: Update session-specific audio engine
-    logger.info("master_volume_update_requested", volume=update.volume)
-    
-    return {
-        "success": True,
-        "volume": update.volume
-    }
+    try:
+        engine = get_audio_engine_from_session()
+        engine.mixer.set_master_volume(update.volume)
+        
+        logger.info("master_volume_updated", volume=update.volume)
+        
+        return {
+            "success": True,
+            "volume": update.volume
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("master_volume_update_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/debug/mixer-state")
+async def get_mixer_state():
+    """Get current mixer state for debugging."""
+    try:
+        engine = get_audio_engine_from_session()
+        tracks = {}
+        for name, track in engine.mixer.tracks.items():
+            tracks[name] = {
+                "volume": track.volume,
+                "mute": track.mute,
+                "solo": track.solo,
+                "synthesizer": track.synthesizer_type
+            }
+        
+        return {
+            "master_volume": engine.mixer.master_volume,
+            "tracks": tracks,
+            "track_count": len(tracks)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("mixer_state_debug_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

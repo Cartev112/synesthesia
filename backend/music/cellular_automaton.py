@@ -91,6 +91,8 @@ class MusicalCellularAutomaton:
         self.birth_max = 3
         self.survive_min = 2
         self.survive_max = 4
+        self.rhythm_mask = self._build_rhythm_mask()
+        self.accent_pattern = self._build_accent_pattern()
         
         # Initialize with random pattern
         self._initialize_pattern()
@@ -106,6 +108,35 @@ class MusicalCellularAutomaton:
     def _initialize_pattern(self):
         """Initialize grid with random pattern."""
         self.grid = np.random.random((self.height, self.width)) < self.density
+        self.rhythm_mask = self._build_rhythm_mask()
+
+    def _build_rhythm_mask(self) -> NDArray[np.float64]:
+        """
+        Create a rhythmic mask that gates which columns may produce notes.
+        
+        The mask emphasizes downbeats to keep the CA output feeling metered
+        even when brain-state updates or websocket ticks are jittery.
+        """
+        # Strong beats on 1 and 3, lighter syncopation elsewhere
+        base = np.array([
+            1.0, 0.45, 0.8, 0.55,
+            0.95, 0.6, 0.75, 0.5,
+            1.0, 0.45, 0.8, 0.55,
+            0.95, 0.6, 0.75, 0.5,
+        ])
+        
+        density_scale = np.clip(self.density + 0.2, 0.2, 1.0)
+        mask = np.clip(base * density_scale, 0.0, 1.0)
+        return mask.astype(float)
+
+    def _build_accent_pattern(self) -> NDArray[np.float64]:
+        """Accent pattern used to scale velocities on strong beats."""
+        return np.array([
+            1.2, 0.9, 1.05, 0.95,
+            1.15, 0.9, 1.05, 0.95,
+            1.2, 0.9, 1.05, 0.95,
+            1.1, 0.9, 1.05, 0.95,
+        ])
     
     def update_from_brain_state(self, brain_state: Dict[str, float]):
         """
@@ -167,6 +198,10 @@ class MusicalCellularAutomaton:
             mask = np.random.random(self.grid.shape) < 0.1
             self.grid = np.logical_and(self.grid, ~mask)
         
+        # Update rhythmic emphasis to reflect new density/complexity
+        self.rhythm_mask = self._build_rhythm_mask()
+        self.accent_pattern = self._build_accent_pattern()
+        
         logger.debug(
             "brain_state_update",
             tempo=self.tempo,
@@ -174,9 +209,12 @@ class MusicalCellularAutomaton:
             complexity=self.complexity
         )
     
-    def step(self) -> List[MidiEvent]:
+    def step(self, time_offset: float = 0.0) -> List[MidiEvent]:
         """
         Advance CA one step and generate MIDI events.
+        
+        Args:
+            time_offset: Base time offset (seconds) to apply to generated events
         
         Returns:
             List of MIDI events to play
@@ -187,16 +225,28 @@ class MusicalCellularAutomaton:
         # Extract notes from current column
         events = []
         active_cells = np.where(self.grid[:, self.current_position])[0]
+        rhythm_gate = self.rhythm_mask[self.current_position]
+        
+        if rhythm_gate <= 0.05:
+            active_cells = np.array([], dtype=int)
+        elif rhythm_gate < 0.99 and active_cells.size > 0:
+            keep = np.random.random(active_cells.shape) < rhythm_gate
+            active_cells = active_cells[keep]
+        
+        accent = self.accent_pattern[self.current_position]
         
         for cell_y in active_cells:
             midi_note = self._cell_to_midi(cell_y)
             velocity = self._compute_velocity(cell_y)
             duration = self._compute_duration()
             
+            adjusted_velocity = int(np.clip(velocity * accent, 1, 127))
+            
             events.append(MidiEvent(
                 note=midi_note,
-                velocity=velocity,
-                duration=duration
+                velocity=adjusted_velocity,
+                duration=duration,
+                time=time_offset
             ))
         
         # Advance position
@@ -318,8 +368,8 @@ class MusicalCellularAutomaton:
         # Duration of one grid step (16th note)
         step_duration = 60.0 / self.tempo / 4.0  # Quarter note / 4
         
-        # Notes can be 1-4 steps long
-        num_steps = np.random.choice([1, 2, 3, 4], p=[0.5, 0.3, 0.15, 0.05])
+        # Favor shorter notes to keep motion while allowing occasional longer holds
+        num_steps = np.random.choice([1, 2, 3], p=[0.55, 0.35, 0.10])
         
         return step_duration * num_steps
     

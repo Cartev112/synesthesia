@@ -64,6 +64,11 @@ class EEGSimulator:
         self.transition_start_time: Optional[float] = None
         self.transition_duration: float = 2.0  # seconds
         
+        # Auto-variation for demo mode
+        self.auto_vary_states: bool = True
+        self.last_state_change: float = time.time()
+        self.state_change_interval: float = 10.0  # Change state every 10 seconds
+        
         # Phase accumulator for oscillators
         self.phase: NDArray[np.float64] = np.zeros(n_channels)
         self.time_step = 1.0 / sampling_rate
@@ -214,6 +219,22 @@ class EEGSimulator:
     
     def _update_state_transition(self) -> None:
         """Update current state based on transition progress."""
+        # Auto-vary states for demo mode
+        if self.auto_vary_states:
+            current_time = time.time()
+            if current_time - self.last_state_change >= self.state_change_interval:
+                # Randomly pick a new state
+                states: list[BrainState] = ["neutral", "focus", "relax"]
+                new_state = self.rng.choice(states)
+                intensity = self.rng.uniform(0.6, 1.0)
+                self.set_mental_state(new_state, intensity, transition_time=3.0)
+                self.last_state_change = current_time
+                logger.info(
+                    "auto_state_change",
+                    new_state=new_state,
+                    intensity=intensity
+                )
+        
         if self.transition_start_time is None:
             return
         

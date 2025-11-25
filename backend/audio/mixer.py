@@ -72,8 +72,21 @@ class AudioTrack:
         for effect in self._effect_chain:
             samples = effect.process(samples)
         
+        # Log pre-volume level for first few notes to verify volume is applied
+        max_before_vol = np.max(np.abs(samples)) if samples.size > 0 else 0.0
+        
         # Apply volume
         samples *= self.volume
+        
+        max_after_vol = np.max(np.abs(samples)) if samples.size > 0 else 0.0
+        
+        # Log every note render to diagnose volume issue
+        logger.info("track_render_note", 
+                    track=self.name,
+                    volume=float(self.volume),
+                    max_before_vol=float(max_before_vol),
+                    max_after_vol=float(max_after_vol),
+                    velocity=float(velocity))
         
         return samples
     
@@ -217,13 +230,28 @@ class AudioMixer:
             # For now, just add to mono output
             output += track_audio
         
+        # Log pre-master levels for debugging
+        max_before_master = np.max(np.abs(output)) if output.size > 0 else 0.0
+        
         # Apply master volume
         output *= self.master_volume
         
-        # Normalize to prevent clipping
-        max_amplitude = np.max(np.abs(output))
-        if max_amplitude > 1.0:
-            output /= max_amplitude
+        # Log post-master levels
+        max_after_master = np.max(np.abs(output)) if output.size > 0 else 0.0
+        
+        # Only clip if we're actually clipping (> 1.0)
+        # Don't apply saturation below clipping threshold - it defeats volume control
+        if max_after_master > 1.0:
+            output = np.clip(output, -1.0, 1.0)
+            logger.warning("audio_clipped", max_before_clip=max_after_master, master_vol=self.master_volume)
+        
+        # Always log mixer levels to diagnose volume control issue
+        logger.info("mixer_levels", 
+                    pre_master=float(max_before_master), 
+                    post_master=float(max_after_master),
+                    master_vol=float(self.master_volume),
+                    active_tracks=len([t for t in self.tracks.values() if not t.mute]),
+                    total_tracks=len(self.tracks))
         
         return output
     
@@ -248,26 +276,49 @@ class AudioMixer:
         output = np.zeros(n_samples)
         
         for event in events:
+            # Normalize MIDI velocity (0-127) to float (0-1)
+            normalized_velocity = event.velocity / 127.0
+            
             # Render note
             note_samples = track.render_note(
                 event.note,
                 event.duration,
-                event.velocity
+                normalized_velocity
             )
             
             # Calculate start position
             start_sample = int(event.time * self.sample_rate)
             end_sample = start_sample + len(note_samples)
             
-            # Ensure we don't exceed buffer
+            # Drop events that start entirely after this buffer
             if start_sample >= n_samples:
                 continue
             
+            # If event starts before buffer, trim the leading portion
+            if start_sample < 0:
+                trim = -start_sample
+                note_samples = note_samples[trim:]
+                start_sample = 0
+                end_sample = start_sample + len(note_samples)
+            
+            # Clamp to buffer end
             end_sample = min(end_sample, n_samples)
             note_length = end_sample - start_sample
+            if note_length <= 0:
+                continue
+            
+            # Get the portion of note that fits in this buffer
+            note_chunk = note_samples[:note_length]
+            
+            # If note is truncated at buffer end, apply quick fade-out to prevent clicks
+            if len(note_samples) > note_length:
+                fade_samples = min(64, note_length)  # 1.45ms fade at 44.1kHz
+                if fade_samples > 0:
+                    fade_out = np.linspace(1.0, 0.0, fade_samples)
+                    note_chunk[-fade_samples:] *= fade_out
             
             # Mix into output
-            output[start_sample:end_sample] += note_samples[:note_length]
+            output[start_sample:end_sample] += note_chunk
         
         return output
     
@@ -275,27 +326,29 @@ class AudioMixer:
         """Set track volume."""
         track = self.tracks.get(track_name)
         if track:
+            old_volume = track.volume
             track.volume = np.clip(volume, 0.0, 1.0)
-            logger.debug("track_volume_changed", track=track_name, volume=volume)
+            logger.info("track_volume_changed", track=track_name, old=old_volume, new=track.volume)
+        else:
+            logger.warning("track_volume_change_failed_track_not_found", track=track_name, available_tracks=list(self.tracks.keys()))
     
     def set_track_mute(self, track_name: str, mute: bool):
         """Mute or unmute a track."""
         track = self.tracks.get(track_name)
         if track:
             track.mute = mute
-            logger.debug("track_mute_changed", track=track_name, mute=mute)
     
     def set_track_solo(self, track_name: str, solo: bool):
         """Solo or unsolo a track."""
         track = self.tracks.get(track_name)
         if track:
             track.solo = solo
-            logger.debug("track_solo_changed", track=track_name, solo=solo)
     
     def set_master_volume(self, volume: float):
         """Set master volume."""
+        old_volume = self.master_volume
         self.master_volume = np.clip(volume, 0.0, 1.0)
-        logger.debug("master_volume_changed", volume=volume)
+        logger.info("master_volume_changed", old=old_volume, new=self.master_volume)
     
     def get_track_list(self) -> List[Dict]:
         """Get list of all tracks with their settings."""
