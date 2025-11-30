@@ -15,6 +15,7 @@ interface VisualParams {
 
 interface UseWebSocketReturn {
   isConnected: boolean;
+  isSessionActive: boolean;
   brainState: BrainState | null;
   musicEvents: MusicEvents | null;
   visualParams: VisualParams | null;
@@ -23,8 +24,14 @@ interface UseWebSocketReturn {
   stopSession: () => void;
 }
 
+// Module-level singleton to prevent duplicate connections
+let globalWs: WebSocket | null = null;
+let globalSessionId: string | null = null;
+let isGlobalConnecting = false;
+
 export function useWebSocket(): UseWebSocketReturn {
   const [isConnected, setIsConnected] = useState(false);
+  const [isSessionActive, setIsSessionActive] = useState(false);
   const [brainState, setBrainState] = useState<BrainState | null>(null);
   const [musicEvents, setMusicEvents] = useState<MusicEvents | null>(null);
   const [visualParams, setVisualParams] = useState<VisualParams | null>(null);
@@ -32,29 +39,39 @@ export function useWebSocket(): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const messageCountRef = useRef(0);
   
-  // Generate a random session ID for now
-  const sessionId = useRef(`session-${Math.random().toString(36).substr(2, 9)}`).current;
+  // Generate a random session ID for now (only once globally)
+  if (!globalSessionId) {
+    globalSessionId = `session-${Math.random().toString(36).substr(2, 9)}`;
+  }
+  const sessionId = globalSessionId;
 
   useEffect(() => {
+    // Use global singleton to prevent duplicate connections
+    if (isGlobalConnecting || (globalWs && globalWs.readyState !== WebSocket.CLOSED)) {
+      console.log('Using existing global WebSocket connection');
+      wsRef.current = globalWs;
+      if (globalWs && globalWs.readyState === WebSocket.OPEN) {
+        setIsConnected(true);
+      }
+      return;
+    }
+    
+    isGlobalConnecting = true;
+
     // Connect to WebSocket - use backend server directly
     const wsUrl = buildWebSocketUrl(`/ws/stream/${sessionId}`);
     
     console.log(`Connecting to WebSocket: ${wsUrl}`);
     const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
     
-    // Track if this specific connection has started a session
-    let sessionStarted = false;
+    // Set both local ref and global singleton
+    wsRef.current = ws;
+    globalWs = ws;
 
     ws.onopen = () => {
       console.log('WebSocket Connected:', wsUrl);
       setIsConnected(true);
-      
-      // Auto-start session immediately after connection
-      if (!sessionStarted) {
-        ws.send(JSON.stringify({ type: 'start_session' }));
-        sessionStarted = true;
-      }
+      isGlobalConnecting = false;
     };
 
     ws.onmessage = (event) => {
@@ -63,7 +80,11 @@ export function useWebSocket(): UseWebSocketReturn {
         
         // Track message count for debugging
         messageCountRef.current++;
-        if (messageCountRef.current % 50 === 0) {
+        
+        // Log all message types for debugging (but not too verbose for brain_state)
+        if (message.type !== 'brain_state' && message.type !== 'visual_params' && message.type !== 'music_events') {
+          console.log('WebSocket message received:', message.type, message);
+        } else if (messageCountRef.current % 50 === 0) {
           console.log(`WebSocket: Received ${messageCountRef.current} messages`);
         }
         
@@ -83,14 +104,18 @@ export function useWebSocket(): UseWebSocketReturn {
             setVisualParams(message.data);
             break;
           case 'session_started':
+            console.log('✅ Session started message received!', message);
+            setIsSessionActive(true);
+            break;
           case 'session_stopped':
-            // no-op; kept for potential UI indicators
+            console.log('⏹️ Session stopped message received!', message);
+            setIsSessionActive(false);
             break;
           case 'error':
             console.error('Server error:', message);
             break;
           default:
-            // Ignore unknown message types
+            console.warn('Unknown message type:', message.type);
             break;
         }
       } catch (err) {
@@ -107,15 +132,28 @@ export function useWebSocket(): UseWebSocketReturn {
       console.error('WebSocket Error:', error);
       console.error('  URL:', wsUrl);
       console.error('  ReadyState:', ws.readyState);
+      isGlobalConnecting = false;
     };
 
     return () => {
-      ws.close();
+      console.log('Cleaning up WebSocket connection');
+      // Don't close the global connection on cleanup (StrictMode protection)
+      // Only clear local ref
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+      }
     };
   }, [sessionId]);
 
   const startSession = useCallback(() => {
+    console.log('startSession called', {
+      wsExists: !!wsRef.current,
+      readyState: wsRef.current?.readyState,
+      isOpen: wsRef.current?.readyState === WebSocket.OPEN
+    });
+    
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('Sending start_session message');
       wsRef.current.send(JSON.stringify({ type: 'start_session' }));
     } else {
       console.error('Cannot start session - WebSocket not connected. ReadyState:', wsRef.current?.readyState);
@@ -123,13 +161,23 @@ export function useWebSocket(): UseWebSocketReturn {
   }, []);
 
   const stopSession = useCallback(() => {
+    console.log('stopSession called', {
+      wsExists: !!wsRef.current,
+      readyState: wsRef.current?.readyState,
+      isOpen: wsRef.current?.readyState === WebSocket.OPEN
+    });
+    
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('Sending stop_session message');
       wsRef.current.send(JSON.stringify({ type: 'stop_session' }));
+    } else {
+      console.error('Cannot stop session - WebSocket not connected');
     }
   }, []);
 
   return {
     isConnected,
+    isSessionActive,
     brainState,
     musicEvents,
     visualParams,

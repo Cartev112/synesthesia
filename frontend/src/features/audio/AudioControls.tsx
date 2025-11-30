@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp, Volume2, Music, Waves, Play, Pause } from 'lucide-react';
+import { ChevronDown, ChevronUp, Volume2, Music, Waves } from 'lucide-react';
 import {
   Collapsible,
   CollapsibleContent,
@@ -106,19 +105,12 @@ export function AudioControls() {
             <Music className="w-4 h-4" />
             MUSIC ENGINE
           </div>
-          <Button
-            size="sm"
-            variant={audioEngine.isPlaying ? "destructive" : "default"}
-            onClick={() => audioEngine.isPlaying ? audioEngine.stop() : audioEngine.start()}
-            disabled={!audioEngine.isInitialized}
-            className="h-6 px-2"
+          <Badge 
+            variant={audioEngine.isPlaying ? "default" : "outline"}
+            className={`text-[10px] px-2 py-0.5 ${audioEngine.isPlaying ? 'bg-syn-green/20 text-syn-green border-syn-green' : 'text-muted-foreground'}`}
           >
-            {audioEngine.isPlaying ? (
-              <><Pause className="w-3 h-3 mr-1" /> Stop</>
-            ) : (
-              <><Play className="w-3 h-3 mr-1" /> Start</>
-            )}
-          </Button>
+            {audioEngine.isPlaying ? 'ACTIVE' : 'IDLE'}
+          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -238,6 +230,7 @@ export function AudioControls() {
         {/* Info */}
         <div className="pt-2 border-t border-border">
           <div className="text-[9px] text-muted-foreground space-y-0.5">
+            <p>• Auto-controlled by session state</p>
             <p>• 4 musical layers (bass, harmony, melody, texture)</p>
             <p>• 4 synthesizers per track</p>
           </div>

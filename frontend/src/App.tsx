@@ -13,6 +13,7 @@ import type { AlgorithmType } from '@/features/visualizer/algorithms';
 function App() {
   const { 
     isConnected, 
+    isSessionActive,
     brainState, 
     visualParams, 
     brainStateHistory,
@@ -28,6 +29,17 @@ function App() {
   
   // Priority: Manual params > Preset params > WebSocket params
   const activeVisualParams = manualParams || presetParams || visualParams;
+
+  // Auto-start/stop music based on session state
+  useEffect(() => {
+    if (isSessionActive && !audioEngine.isPlaying) {
+      console.log('Session started - starting audio engine');
+      audioEngine.start();
+    } else if (!isSessionActive && audioEngine.isPlaying) {
+      console.log('Session stopped - stopping audio engine');
+      audioEngine.stop();
+    }
+  }, [isSessionActive, audioEngine]);
 
   // Update audio engine with brain state
   useEffect(() => {
@@ -90,20 +102,32 @@ function App() {
              <div className="flex gap-2 mt-2">
                <Button 
                 size="sm" 
-                variant={isConnected ? "destructive" : "neon"}
-                onClick={isConnected ? stopSession : startSession}
+                variant={isSessionActive ? "destructive" : "neon"}
+                onClick={() => {
+                  console.log('Session button clicked', {
+                    isSessionActive,
+                    isConnected,
+                    action: isSessionActive ? 'stop' : 'start'
+                  });
+                  if (isSessionActive) {
+                    stopSession();
+                  } else {
+                    startSession();
+                  }
+                }}
+                disabled={!isConnected}
                 className="h-6 text-xs"
                >
                  <Power className="w-3 h-3 mr-1" />
-                 {isConnected ? 'STOP SESSION' : 'START SESSION'}
+                 {isSessionActive ? 'STOP SESSION' : 'START SESSION'}
                </Button>
              </div>
           </div>
         </header>
         
-        <main className="grid grid-cols-1 md:grid-cols-12 gap-6 flex-1 min-h-0">
+        <main className="grid grid-cols-1 md:grid-cols-12 gap-6 flex-1 min-h-0 items-stretch h-full">
           {/* Left Column: Controls */}
-          <div className="md:col-span-3 flex flex-col gap-6 overflow-y-auto pr-2">
+          <div className="md:col-span-3 flex flex-col gap-6 overflow-y-auto pr-2 h-full min-h-0">
             <div className="flex-none">
               <VisualSettings 
                 onAlgorithmChange={(algo) => setSelectedAlgorithm(algo as AlgorithmType)}
@@ -148,7 +172,7 @@ function App() {
           </div>
           
           {/* Right Column: EEG + Audio */}
-          <div className="md:col-span-3 flex flex-col gap-6 overflow-y-auto">
+          <div className="md:col-span-3 flex flex-col gap-6 overflow-y-auto h-full min-h-0">
             <div className="flex-none">
               <EEGDisplay data={brainStateHistory} />
             </div>

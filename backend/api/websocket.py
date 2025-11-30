@@ -101,7 +101,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 
             elif message_type == "stop_session":
                 await handle_stop_session(session_id)
-                break
+                # Don't break - keep connection open for potential restart
                 
             elif message_type == "calibration_start":
                 await handle_calibration_start(session_id, message)
@@ -143,6 +143,16 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 async def handle_start_session(session_id: str, message: dict) -> None:
     """Handle start_session message."""
+    # Check if session is already running
+    if session_id in manager.pipelines:
+        logger.warning("session_already_active", session_id=session_id)
+        await manager.send_message(session_id, {
+            "type": "error",
+            "code": "SESSION_ALREADY_ACTIVE",
+            "message": "Session is already running"
+        })
+        return
+    
     # Create pipeline with callbacks
     async def on_brain_state(brain_state: dict):
         await manager.send_message(session_id, {

@@ -38,15 +38,15 @@ const PARAM_GROUPS = {
   portal: {
     title: 'Portal (Hyperspace)',
     params: [
-      { key: 'portal_symmetry', label: 'Symmetry Arms', min: 3, max: 14, step: 1, default: 8 },
+      { key: 'portal_symmetry', label: 'Symmetry Arms', min: 3, max: 14, step: 1, default: 6 },
       { key: 'portal_radial_frequency', label: 'Radial Frequency', min: 1, max: 12, step: 0.1, default: 6.0 },
       { key: 'portal_angular_frequency', label: 'Angular Frequency', min: 0.5, max: 4, step: 0.05, default: 2.0 },
-      { key: 'portal_warp', label: 'Warp Intensity', min: 0, max: 1, step: 0.05, default: 0.4 },
-      { key: 'portal_spiral', label: 'Spiral Twist', min: -1.5, max: 1.5, step: 0.05, default: 0.6 },
+      { key: 'portal_warp', label: 'Warp Intensity', min: 0, max: 1, step: 0.05, default: 0.15 },
+      { key: 'portal_spiral', label: 'Spiral Twist', min: -1.5, max: 1.5, step: 0.05, default: -1.5 },
       { key: 'portal_layers', label: 'Depth Layers', min: 2, max: 8, step: 1, default: 4 },
-      { key: 'portal_radius', label: 'Base Radius', min: 0.2, max: 1, step: 0.02, default: 0.55 },
-      { key: 'portal_ripple', label: 'Ripple Amplitude', min: 0, max: 0.6, step: 0.02, default: 0.25 },
-      { key: 'portal_depth_skew', label: 'Depth Skew', min: 0, max: 1, step: 0.05, default: 0.4 },
+      { key: 'portal_radius', label: 'Base Radius', min: 0.2, max: 1, step: 0.02, default: 0.48 },
+      { key: 'portal_ripple', label: 'Ripple Amplitude', min: 0, max: 0.6, step: 0.02, default: 0.2 },
+      { key: 'portal_depth_skew', label: 'Depth Skew', min: 0, max: 1, step: 0.05, default: 0.35 },
     ] as ParamConfig[]
   },
   complexity: {
@@ -73,8 +73,8 @@ const PARAM_GROUPS = {
       { key: 'rotation_speed', label: 'Rotation Speed', min: 0, max: 1, step: 0.05, default: 0 },
       { key: 'speed_multiplier', label: 'Speed', min: 0.1, max: 3, step: 0.1, default: 1.0 },
       { key: 'pulse_frequency', label: 'Pulse Frequency', min: 0, max: 3, step: 0.1, default: 1.0 },
-      { key: 'pulse_amplitude', label: 'Pulse Amplitude', min: 0, max: 0.5, step: 0.05, default: 0.2 },
-      { key: 'trail_length', label: 'Trail Length', min: 0, max: 1, step: 0.05, default: 0.1 },
+      { key: 'pulse_amplitude', label: 'Pulse Amplitude', min: 0, max: 0.5, step: 0.05, default: 0 },
+      { key: 'trail_length', label: 'Trail Length', min: 0, max: 1, step: 0.05, default: 0.9 },
     ] as ParamConfig[]
   },
   damping: {
