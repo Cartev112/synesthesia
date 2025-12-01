@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     workers: int = 1
-    frontend_url: meta.env.FRONTEND_URL | None = None
+    frontend_url: str | None = None
     
     # Database
     database_url: str = "postgresql://synesthesia:password@localhost:5432/synesthesia_db"

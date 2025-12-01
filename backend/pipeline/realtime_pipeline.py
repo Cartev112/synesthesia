@@ -137,7 +137,14 @@ class RealtimePipeline:
         logger.info("pipeline_started")
         
         # Start processing loop
-        asyncio.create_task(self._processing_loop())
+        self._processing_task = asyncio.create_task(self._processing_loop())
+        
+        # Critical: yield control multiple times to ensure the task starts
+        # A single sleep(0) may not be enough if the event loop is busy
+        for _ in range(3):
+            await asyncio.sleep(0.01)
+        
+        logger.info("processing_loop_scheduled")
     
     async def stop(self):
         """Stop the real-time pipeline."""
@@ -158,6 +165,14 @@ class RealtimePipeline:
                 total_samples=self.sample_count,
                 total_updates_sent=self.update_count
             )
+        else:
+            # Log even if no latency metrics (debugging)
+            logger.warning(
+                "pipeline_stopped_no_updates",
+                total_samples=self.sample_count,
+                total_updates_sent=self.update_count,
+                buffer_samples=self.buffer.current_samples if self.buffer else 0
+            )
     
     async def _processing_loop(self):
         """Main processing loop."""
@@ -167,6 +182,7 @@ class RealtimePipeline:
         # Track last brain state for continuous updates
         last_brain_state = None
         last_visual_params = None
+        first_iteration = True
         
         while self.is_running:
             try:
@@ -202,6 +218,17 @@ class RealtimePipeline:
                 
                 # 5. Extract features and update state (on 1s window)
                 should_update = False
+                
+                # Debug logging for first iteration
+                if first_iteration:
+                    logger.info(
+                        "first_iteration_state",
+                        buffer_samples=self.buffer.current_samples,
+                        is_artifact=is_artifact,
+                        will_extract_features=self.buffer.current_samples >= 256 and not is_artifact
+                    )
+                    first_iteration = False
+                
                 if self.buffer.current_samples >= 256 and not is_artifact:
                     t0 = time.time()
                     feature_window = self.buffer.get_latest(duration=1.0)
