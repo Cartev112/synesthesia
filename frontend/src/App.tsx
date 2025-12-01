@@ -27,8 +27,13 @@ function App() {
   const [presetParams, setPresetParams] = useState<any>(null);
   const [manualParams, setManualParams] = useState<any>(null);
   
-  // Priority: Manual params > Preset params > WebSocket params
-  const activeVisualParams = manualParams || presetParams || visualParams;
+  // Merge params: WebSocket (base) <- Preset (overlay) <- Manual (overlay)
+  // This allows brain-state mappings to continue while manual/preset adjustments override specific params
+  const activeVisualParams = {
+    ...visualParams,      // Base: brain-state mapped params from backend
+    ...presetParams,      // Overlay: preset overrides (if any)
+    ...manualParams,      // Overlay: manual overrides (if any)
+  };
 
   // Auto-start/stop music based on session state
   useEffect(() => {
@@ -57,7 +62,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans p-4 md:p-8 overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-syn-dark via-[#050510] to-black">
-      <div className="max-w-[1600px] mx-auto h-[calc(100vh-4rem)] flex flex-col">
+      <div className="h-[calc(100vh-4rem)] flex flex-col">
         <header className="mb-8 flex justify-between items-center flex-none">
           <div>
             <h1 className="text-4xl md:text-6xl font-bold font-display text-transparent bg-clip-text bg-gradient-to-r from-syn-cyan via-syn-purple to-syn-cyan animate-pulse tracking-tighter">
@@ -129,9 +134,7 @@ function App() {
                 onPresetParamsChange={(params) => {
                   console.log('Applying preset parameters:', params);
                   setPresetParams(params);
-                  setManualParams(null); // Clear manual overrides
-                  // Clear preset after 30 seconds to return to brain-responsive mode
-                  setTimeout(() => setPresetParams(null), 30000);
+                  // Don't clear manual params - they merge together
                 }}
               />
             </div>
@@ -141,7 +144,7 @@ function App() {
                 onParamsChange={(params) => {
                   console.log('Manual parameters:', params);
                   setManualParams(params);
-                  setPresetParams(null); // Clear preset when manually adjusting
+                  // Don't clear preset - they merge together
                 }}
               />
             </div>
@@ -153,14 +156,18 @@ function App() {
               <VisualCanvas params={activeVisualParams} algorithm={selectedAlgorithm} isActive={isSessionActive} />
             </div>
 
-            {manualParams && (
-              <div className="absolute top-4 left-4 text-xs font-mono text-syn-green bg-syn-green/10 border border-syn-green/30 px-3 py-1 rounded backdrop-blur">
-                MANUAL CONTROL
-              </div>
-            )}
-            {!manualParams && presetParams && (
-              <div className="absolute top-4 left-4 text-xs font-mono text-syn-purple bg-syn-purple/10 border border-syn-purple/30 px-3 py-1 rounded backdrop-blur">
-                PRESET ACTIVE
+            {(manualParams || presetParams) && (
+              <div className="absolute top-4 left-4 flex gap-2">
+                {presetParams && (
+                  <div className="text-xs font-mono text-syn-purple bg-syn-purple/10 border border-syn-purple/30 px-3 py-1 rounded backdrop-blur">
+                    PRESET
+                  </div>
+                )}
+                {manualParams && (
+                  <div className="text-xs font-mono text-syn-green bg-syn-green/10 border border-syn-green/30 px-3 py-1 rounded backdrop-blur">
+                    MANUAL
+                  </div>
+                )}
               </div>
             )}
           </div>

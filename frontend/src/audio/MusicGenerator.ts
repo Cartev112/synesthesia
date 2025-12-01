@@ -11,28 +11,51 @@ export interface BrainState {
   relax: number;   // 0-1 (sum of probabilities)
 }
 
-// Musical scales
+// Musical scales - ambient-friendly modes
 const SCALES = {
   major: [0, 2, 4, 5, 7, 9, 11],
   minor: [0, 2, 3, 5, 7, 8, 10],
   pentatonic: [0, 2, 4, 7, 9],
-  blues: [0, 3, 5, 6, 7, 10],
-  dorian: [0, 2, 3, 5, 7, 9, 10],
-  phrygian: [0, 1, 3, 5, 7, 8, 10],
-  lydian: [0, 2, 4, 6, 7, 9, 11],
-  mixolydian: [0, 2, 4, 5, 7, 9, 10],
+  dorian: [0, 2, 3, 5, 7, 9, 10],      // Minor with raised 6th - dreamy
+  lydian: [0, 2, 4, 6, 7, 9, 11],      // Major with raised 4th - ethereal
+  mixolydian: [0, 2, 4, 5, 7, 9, 10],  // Major with flat 7th - floating
+  aeolian: [0, 2, 3, 5, 7, 8, 10],     // Natural minor - melancholic
 };
 
-// Common chord progressions (scale degrees)
+// Ambient-friendly scales for melody
+const AMBIENT_SCALES = {
+  pentatonicMajor: [0, 2, 4, 7, 9],
+  pentatonicMinor: [0, 3, 5, 7, 10],
+  wholeTone: [0, 2, 4, 6, 8, 10],      // Dreamy, no resolution
+  suspended: [0, 2, 5, 7, 9],          // Avoids 3rds - open sound
+};
+
+// Ambient chord progressions (scale degrees) - slow, floating, minimal movement
 const PROGRESSIONS = [
-  [0, 4, 0, 4],       // I-V-I-V (classic)
-  [1, 4, 0, 5],       // I-IV-V-I (authentic cadence)
-  [2, 5, 3, 4],       // I-vi-IV-V (50s progression)
-  [0, 4, 5, 3],       // I-V-vi-IV (pop progression)
-  [2, 3, 5, 4],       // I-IV-vi-V
+  // Minimal movement - drone-like
+  [0, 0, 4, 0],       // I-I-V-I (pedal tone)
+  [0, 3, 0, 3],       // I-IV-I-IV (gentle oscillation)
+  [0, 5, 0, 5],       // I-vi-I-vi (minor color)
+  
+  // Descending - melancholic ambient
+  [0, 6, 5, 4],       // I-vii-vi-V (descending)
+  [5, 4, 3, 0],       // vi-V-IV-I (aeolian descent)
+  [0, 6, 3, 4],       // I-vii-IV-V (tension release)
+  
+  // Modal/suspended feel
+  [0, 2, 0, 4],       // I-iii-I-V (modal)
+  [0, 4, 3, 2],       // I-V-IV-iii (reverse pop)
+  [3, 0, 4, 0],       // IV-I-V-I (plagal ambient)
+  
+  // Emotional/cinematic
   [5, 3, 4, 0],       // vi-IV-V-I (emotional)
-  [0, 2, 3, 4],       // I-iii-IV-V
-  [1, 4, 2, 5],       // I-V-iii-vi (deceptive)
+  [0, 5, 3, 4],       // I-vi-IV-V (50s dreamy)
+  [5, 0, 3, 4],       // vi-I-IV-V (hopeful)
+  
+  // Static/meditative
+  [1, 4, 0, 5],       // I-I-I-V (very minimal)
+  [0, 3, 3, 0],       // I-IV-IV-I (suspended feel)
+  [5, 5, 0, 0],       // vi-vi-I-I (dark to light)
 ];
 
 export class MusicGenerator {
@@ -96,34 +119,44 @@ export class MusicGenerator {
   }
 
   /**
-   * Build a chord with extensions and variations
+   * Build a chord with ambient extensions and voicings
    */
   private buildChord(scaleDegree: number): number[] {
     const root = this.currentScale[scaleDegree];
+    const second = this.currentScale[(scaleDegree + 1) % this.currentScale.length];
     const third = this.currentScale[(scaleDegree + 2) % this.currentScale.length];
+    const fourth = this.currentScale[(scaleDegree + 3) % this.currentScale.length];
     const fifth = this.currentScale[(scaleDegree + 4) % this.currentScale.length];
+    const sixth = this.currentScale[(scaleDegree + 5) % this.currentScale.length];
+    const seventh = this.currentScale[(scaleDegree + 6) % this.currentScale.length];
 
-    // Randomly add extensions for variety
+    // Ambient chord voicings - favor extensions, suspensions, and open voicings
     const rand = Math.random();
     
-    if (rand < 0.15) {
-      // Add 7th (15% chance)
-      const seventh = this.currentScale[(scaleDegree + 6) % this.currentScale.length];
-      return [root, third, fifth, seventh];
-    } else if (rand < 0.25) {
-      // Add 9th/2nd (10% chance)
-      const ninth = this.currentScale[(scaleDegree + 1) % this.currentScale.length];
-      return [root, third, fifth, ninth];
+    if (rand < 0.20) {
+      // Add9 chord (20% chance) - lush, shimmery
+      return [root, third, fifth, second + 12];
     } else if (rand < 0.35) {
-      // Sus4 chord (10% chance) - replace third with fourth
-      const fourth = this.currentScale[(scaleDegree + 3) % this.currentScale.length];
+      // Maj7/min7 chord (15% chance) - smooth, jazzy
+      return [root, third, fifth, seventh];
+    } else if (rand < 0.50) {
+      // Sus2 chord (15% chance) - open, ambiguous
+      return [root, second, fifth];
+    } else if (rand < 0.65) {
+      // Sus4 chord (15% chance) - suspended, unresolved
       return [root, fourth, fifth];
-    } else if (rand < 0.40) {
-      // Power chord (5% chance) - just root and fifth
-      return [root, fifth];
+    } else if (rand < 0.75) {
+      // Add11 chord (10% chance) - wide, orchestral
+      return [root, third, fifth, fourth + 12];
+    } else if (rand < 0.85) {
+      // 6th chord (10% chance) - warm, nostalgic
+      return [root, third, fifth, sixth];
+    } else if (rand < 0.92) {
+      // Power chord with octave (7% chance) - open, powerful
+      return [root, fifth, root + 12];
     } else {
-      // Standard triad (60% chance)
-      return [root, third, fifth];
+      // Sparse - just root and fifth (8% chance) - minimal, drone-like
+      return [root, fifth];
     }
   }
 
@@ -180,68 +213,82 @@ export class MusicGenerator {
   }
 
   /**
-   * Generate harmony - plays triad from current chord
+   * Generate harmony - wide voicings with staggered entry for ambient pad sound
    */
   private generateHarmony(stepDuration: number): MidiEvent[] {
     const events: MidiEvent[] = [];
 
-    // Play full triad when chord changes
+    // Play chord when it changes, with staggered entry for lush sound
     if (this.stepCount % 16 === 0) {
-      // Play all three notes of the triad
-      for (const chordTone of this.currentChord) {
+      // Spread chord tones across octaves for wider voicing
+      this.currentChord.forEach((chordTone, index) => {
+        // Stagger entry slightly for each note (0, 0.5, 1 steps)
+        const staggerTime = index * 0.3 * stepDuration;
+        
+        // Spread across octaves: bass note lower, upper notes higher
+        let octaveAdjust = 0;
+        if (index === 0) octaveAdjust = -12; // Root down an octave
+        if (index >= 2) octaveAdjust = 12;   // Upper extensions up an octave
+        
         events.push({
-          note: this.currentRoot + chordTone,
-          velocity: 45 + Math.random() * 15,
-          duration: stepDuration * 13, // Hold for 3.25 beats with gap before next chord
-          time: 0,
+          note: this.currentRoot + chordTone + octaveAdjust,
+          velocity: 35 + Math.random() * 15, // Softer for ambient
+          duration: stepDuration * 14, // Long sustain
+          time: staggerTime,
         });
-      }
+      });
     }
 
     return events;
   }
 
   /**
-   * Generate melody - mostly pentatonic scale with rhythm based on brain state
+   * Generate melody - sparse, floating notes with chord tone preference
    */
   private generateMelody(stepDuration: number, brainState: BrainState): MidiEvent[] {
     const events: MidiEvent[] = [];
 
-    // Probability and rhythm complexity based on brain state
-    // Focus increases density, relax increases duration
-    const noteProbability = 0.2 + brainState.focus * 0.4; // 0.2-0.6
+    // Lower probability for ambient - more space between notes
+    // Focus increases density slightly, relax makes it very sparse
+    const noteProbability = 0.08 + brainState.focus * 0.15 - brainState.relax * 0.05; // 0.03-0.23
     
     if (Math.random() < noteProbability) {
-      // Use pentatonic subset of current scale
-      const pentatonic = [0, 2, 4, 7, 9].map(degree => 
-        this.currentScale[degree % this.currentScale.length]
-      );
+      // Prefer chord tones for consonance, occasionally add color tones
+      let note: number;
+      const useChordTone = Math.random() < 0.7; // 70% chord tones
       
-      const noteIndex = Math.floor(Math.random() * pentatonic.length);
-      const octaveShift = 12 + (Math.floor(Math.random() * 2) * 12); // 1-2 octaves up
-      const note = this.currentRoot + pentatonic[noteIndex] + octaveShift;
+      if (useChordTone && this.currentChord.length > 0) {
+        // Pick a chord tone
+        const chordTone = this.currentChord[Math.floor(Math.random() * this.currentChord.length)];
+        const octaveShift = 12 + (Math.floor(Math.random() * 2) * 12); // 1-2 octaves up
+        note = this.currentRoot + chordTone + octaveShift;
+      } else {
+        // Use suspended/pentatonic scale for color
+        const ambientScale = AMBIENT_SCALES.suspended;
+        const scaleNote = ambientScale[Math.floor(Math.random() * ambientScale.length)];
+        const octaveShift = 12 + (Math.floor(Math.random() * 2) * 12); // 2-3 octaves up for shimmer
+        note = this.currentRoot + scaleNote + octaveShift;
+      }
 
-      // Duration based on brain state
-      // High focus = shorter, more rhythmic notes
-      // High relax = longer, sustained notes
+      // Longer durations for ambient - notes float and decay
       let duration: number;
       if (brainState.focus > 0.6) {
-        // Fast rhythms when focused
-        const durations = [1, 1, 2, 2, 3];
+        // Still relatively long even when focused
+        const durations = [4, 6, 8];
         duration = durations[Math.floor(Math.random() * durations.length)];
       } else if (brainState.relax > 0.6) {
-        // Slow rhythms when relaxed
-        const durations = [3, 4, 6, 8];
+        // Very long, sustained notes when relaxed
+        const durations = [8, 12, 16];
         duration = durations[Math.floor(Math.random() * durations.length)];
       } else {
-        // Medium rhythms when neutral
-        const durations = [2, 3, 4];
+        // Medium-long for neutral
+        const durations = [6, 8, 10];
         duration = durations[Math.floor(Math.random() * durations.length)];
       }
 
       events.push({
         note,
-        velocity: 65 + Math.random() * 35,
+        velocity: 40 + Math.random() * 25, // Softer dynamics
         duration: stepDuration * duration,
         time: 0,
       });
@@ -251,39 +298,44 @@ export class MusicGenerator {
   }
 
   /**
-   * Generate texture - arpeggiated chord tones with duration based on brain state
+   * Generate texture - gentle, overlapping arpeggios with wide spacing
    */
   private generateTexture(stepDuration: number, brainState: BrainState): MidiEvent[] {
     const events: MidiEvent[] = [];
 
-    // Arpeggio speed based on brain state (2x faster than before)
-    // Focus = faster arpeggios, Relax = slower arpeggios
+    // Slower arpeggios for ambient - more space between notes
+    // Focus = medium arpeggios, Relax = very slow, sparse
     let arpSpeed: number;
     if (brainState.focus > 0.6) {
-      arpSpeed = 1; // Play every step (very fast)
+      arpSpeed = 3; // Play every 3 steps
     } else if (brainState.relax > 0.6) {
-      arpSpeed = 4; // Play every 4 steps (medium)
+      arpSpeed = 6; // Play every 6 steps (very slow)
     } else {
-      arpSpeed = 2; // Play every 2 steps (fast)
+      arpSpeed = 4; // Play every 4 steps
     }
 
     // Play arpeggio note on the appropriate steps
     if (this.stepCount % arpSpeed === 0) {
       const chordTone = this.currentChord[this.textureArpIndex % this.currentChord.length];
-      const octaveShift = 12 + (Math.floor(this.textureArpIndex / 3) % 2) * 12; // Alternate octaves
+      
+      // Wide octave spread for ambient shimmer
+      const octaveOptions = [12, 24, 36]; // 1, 2, or 3 octaves up
+      const octaveShift = octaveOptions[this.textureArpIndex % octaveOptions.length];
       const note = this.currentRoot + chordTone + octaveShift;
 
-      // Duration based on brain state
+      // Long, overlapping durations for pad-like texture
       let duration: number;
       if (brainState.relax > 0.6) {
-        duration = arpSpeed * 3; // Long overlapping notes when relaxed
+        duration = arpSpeed * 4; // Very long, heavily overlapping
+      } else if (brainState.focus > 0.6) {
+        duration = arpSpeed * 2; // Medium overlap
       } else {
-        duration = arpSpeed * 1.5; // Shorter notes otherwise
+        duration = arpSpeed * 3; // Good overlap for ambient
       }
 
       events.push({
         note,
-        velocity: 30 + Math.random() * 15,
+        velocity: 20 + Math.random() * 15, // Very soft for texture
         duration: stepDuration * duration,
         time: 0,
       });
