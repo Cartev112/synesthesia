@@ -27,7 +27,7 @@ interface VisualSettingsProps {
   onPresetParamsChange?: (params: any) => void;
 }
 
-const DISABLED_ALGORITHMS = new Set(['lissajous', 'reaction_diffusion']);
+const DISABLED_ALGORITHMS = new Set(['lissajous', 'reaction_diffusion', 'lorenz', 'harmonograph']);
 
 export function VisualSettings({ onAlgorithmChange, onPresetChange, onPresetParamsChange }: VisualSettingsProps) {
   const [algorithms, setAlgorithms] = useState<Algorithm[]>([]);

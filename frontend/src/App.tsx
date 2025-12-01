@@ -81,9 +81,6 @@ function App() {
               <div className="text-[10px] text-muted-foreground mt-0.5">CURRENT STATE</div>
             </div>
             
-            <div className="text-center">
-              
-            </div>
           </div>
 
           <div className="text-right hidden md:flex flex-col items-end gap-2">

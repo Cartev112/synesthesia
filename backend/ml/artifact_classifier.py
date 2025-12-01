@@ -125,14 +125,18 @@ class ArtifactClassifier:
         self.model = ArtifactCNN(n_channels=n_channels, n_samples=window_samples)
         self.model.eval()  # Set to evaluation mode
         
+        # Track whether model is trained
+        self.is_trained = False
+        
         # Load pre-trained weights if available
         if model_path and model_path.exists():
             self._load_model(model_path)
+            self.is_trained = True
             logger.info("artifact_classifier_loaded", model_path=str(model_path))
         else:
             logger.warning(
                 "artifact_classifier_not_trained",
-                message="Using untrained model. Train before production use."
+                message="Using untrained model. Artifact detection disabled."
             )
         
         # Device selection
@@ -161,6 +165,11 @@ class ArtifactClassifier:
             is_artifact: True if artifact detected
             confidence: Artifact probability (0-1)
         """
+        # Skip artifact detection if model is not trained
+        # Untrained model produces random outputs that incorrectly block data
+        if not self.is_trained:
+            return False, 0.0
+        
         # Validate input shape
         if eeg_window.shape != (self.n_channels, self.window_samples):
             logger.warning(

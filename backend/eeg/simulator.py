@@ -67,7 +67,7 @@ class EEGSimulator:
         # Auto-variation for demo mode
         self.auto_vary_states: bool = True
         self.last_state_change: float = time.time()
-        self.state_change_interval: float = 10.0  # Change state every 10 seconds
+        self.state_change_interval: float = 6.0  # Change state every 10 seconds
         self.state_rotation_index: int = 0  # Track position in rotation
         self.state_rotation: list[BrainState] = ["relax", "neutral", "focus"]  # Deterministic rotation
         
