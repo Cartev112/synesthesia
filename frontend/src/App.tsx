@@ -80,12 +80,9 @@ function App() {
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">CURRENT STATE</div>
             </div>
-            <div className="h-10 w-px bg-white/10"></div>
+            
             <div className="text-center">
-              <div className="text-2xl font-display font-bold text-syn-purple">
-                {brainState ? `${(Math.max(brainState.focus || 0, brainState.relax || 0, brainState.neutral || 0) * 100).toFixed(0)}%` : '--'}
-              </div>
-              <div className="text-[10px] text-muted-foreground mt-0.5">INTENSITY</div>
+              
             </div>
           </div>
 
