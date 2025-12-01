@@ -245,8 +245,8 @@ async def get_parameter_ranges():
     """
     ranges = {
         "trail_length": {
-            "min": 0.3,
-            "max": 0.8,
+            "min": 0.0,
+            "max": 1.0,
             "default": DEFAULT_VISUAL_PARAMS['trail_length'],
             "description": "Trail fade amount"
         },

@@ -48,7 +48,7 @@ interface VisualCanvasProps {
   algorithm?: AlgorithmType;
 }
 
-export function VisualCanvas({ params, algorithm = 'harmonograph' }: VisualCanvasProps) {
+export function VisualCanvas({ params, algorithm = 'hyperspace_portal' }: VisualCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const paramsRef = useRef(params);
   const algorithmRef = useRef(algorithm);
@@ -99,7 +99,7 @@ export function VisualCanvas({ params, algorithm = 'harmonograph' }: VisualCanva
       const saturation = p.saturation ?? 0.7;
       const brightness = p.brightness ?? 0.8;
       const colorCycleSpeed = p.color_cycle_speed ?? 0.2;
-      const trailLength = p.trail_length ?? 0.1;
+      const trailLength = p.trail_length ?? 0.9;
       const speedMult = p.speed_multiplier ?? 1.0;
       const rotSpeed = p.rotation_speed ?? 0;
       

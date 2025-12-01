@@ -14,7 +14,7 @@ export const DEFAULT_ENVELOPE: ADSREnvelope = {
   attack: 0.005,
   decay: 0.05,
   sustain: 0.8,
-  release: 0.05,
+  release: 0.01,  // Very fast release to prevent overlap
 };
 
 export type WaveType = 'sine' | 'square' | 'sawtooth' | 'triangle';
@@ -64,6 +64,10 @@ export class Synthesizer {
     const { attack, decay, sustain, release } = this.envelope;
     const sustainLevel = sustain * velocity;
 
+    // Calculate timing - ensure release starts before note end
+    const noteEnd = now + duration;
+    const releaseStart = Math.max(now + attack + decay, noteEnd - release);
+
     // Attack
     gainNode.gain.setValueAtTime(0, now);
     gainNode.gain.linearRampToValueAtTime(velocity, now + attack);
@@ -71,16 +75,14 @@ export class Synthesizer {
     // Decay to sustain
     gainNode.gain.linearRampToValueAtTime(sustainLevel, now + attack + decay);
 
-    // Sustain (hold at sustain level)
-    const sustainEnd = now + duration - release;
-    gainNode.gain.setValueAtTime(sustainLevel, sustainEnd);
-
-    // Release
-    gainNode.gain.linearRampToValueAtTime(0, sustainEnd + release);
+    // Release - use exponential ramp for faster perceived cutoff
+    gainNode.gain.setValueAtTime(sustainLevel, releaseStart);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, noteEnd); // Exponential is faster
+    gainNode.gain.setValueAtTime(0, noteEnd); // Hard zero at end
 
     // Start and stop oscillator
     osc.start(now);
-    osc.stop(sustainEnd + release + 0.01); // Small buffer to ensure clean stop
+    osc.stop(noteEnd); // Stop exactly at note end
   }
 
   /**

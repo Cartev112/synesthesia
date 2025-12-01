@@ -243,12 +243,18 @@ class EEGSimulator:
                 # Use full intensity for clear distinction
                 intensity = 1.0
                 self.set_mental_state(new_state, intensity, transition_time=1.0)
+                
+                # Vary hemispheric asymmetry with state changes for visual interest
+                # Range: -0.3 to 0.3 (subtle but noticeable rotation)
+                self.hemispheric_asymmetry = (self.rng.random() - 0.5) * 0.6
+                
                 self.last_state_change = current_time
                 logger.info(
                     "auto_state_change",
                     new_state=new_state,
                     intensity=intensity,
-                    rotation_index=self.state_rotation_index
+                    rotation_index=self.state_rotation_index,
+                    hemispheric_asymmetry=self.hemispheric_asymmetry
                 )
         
         if self.transition_start_time is None:

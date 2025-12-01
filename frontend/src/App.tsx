@@ -23,7 +23,7 @@ function App() {
 
   const audioEngine = useAudioEngineContext();
 
-  const [selectedAlgorithm, setSelectedAlgorithm] = useState<AlgorithmType>('harmonograph');
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState<AlgorithmType>('hyperspace_portal');
   const [presetParams, setPresetParams] = useState<any>(null);
   const [manualParams, setManualParams] = useState<any>(null);
   

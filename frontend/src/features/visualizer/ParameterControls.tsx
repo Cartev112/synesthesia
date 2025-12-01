@@ -64,13 +64,12 @@ const PARAM_GROUPS = {
       { key: 'hue_base', label: 'Hue', min: 0, max: 360, step: 1, default: 180 },
       { key: 'saturation', label: 'Saturation', min: 0, max: 1, step: 0.05, default: 0.7 },
       { key: 'brightness', label: 'Brightness', min: 0, max: 1, step: 0.05, default: 0.8 },
-      { key: 'color_cycle_speed', label: 'Color Cycle Speed', min: 0, max: 1, step: 0.05, default: 0.2 },
+      { key: 'color_cycle_speed', label: 'Color Cycle Speed', min: 0, max: 1, step: 0.05, default: 0.5 },
     ] as ParamConfig[]
   },
   animation: {
     title: 'Animation',
     params: [
-      { key: 'rotation_speed', label: 'Rotation Speed', min: 0, max: 1, step: 0.05, default: 0 },
       { key: 'speed_multiplier', label: 'Speed', min: 0.1, max: 3, step: 0.1, default: 1.0 },
       { key: 'pulse_frequency', label: 'Pulse Frequency', min: 0, max: 3, step: 0.1, default: 1.0 },
       { key: 'pulse_amplitude', label: 'Pulse Amplitude', min: 0, max: 0.5, step: 0.05, default: 0 },

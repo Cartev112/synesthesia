@@ -45,14 +45,80 @@ export function useWebSocket(): UseWebSocketReturn {
   }
   const sessionId = globalSessionId;
 
+  // Message handler - defined outside useEffect so it can be reattached
+  const handleMessage = useCallback((event: MessageEvent) => {
+    try {
+      const message = JSON.parse(event.data);
+      
+      // Track message count for debugging
+      messageCountRef.current++;
+      
+      // Log all message types for debugging (but not too verbose for brain_state)
+      if (message.type !== 'brain_state' && message.type !== 'visual_params' && message.type !== 'music_events') {
+        console.log('WebSocket message received:', message.type, message);
+      } else if (messageCountRef.current % 50 === 0) {
+        console.log(`WebSocket: Received ${messageCountRef.current} messages`);
+      }
+      
+      switch (message.type) {
+        case 'brain_state':
+          setBrainState(message.data);
+          setBrainStateHistory(prev => {
+            const newHistory = [...prev, message.data];
+            if (newHistory.length > 50) return newHistory.slice(newHistory.length - 50);
+            return newHistory;
+          });
+          break;
+        case 'music_events':
+          setMusicEvents(message.data);
+          break;
+        case 'visual_params':
+          setVisualParams(message.data);
+          break;
+        case 'session_started':
+          console.log('✅ Session started message received!', message);
+          setIsSessionActive(true);
+          break;
+        case 'session_stopped':
+          console.log('⏹️ Session stopped message received!', message);
+          setIsSessionActive(false);
+          break;
+        case 'error':
+          console.error('Server error:', message);
+          break;
+        default:
+          console.warn('Unknown message type:', message.type);
+          break;
+      }
+    } catch (err) {
+      console.error('Error parsing WebSocket message:', err);
+    }
+  }, []);
+
   useEffect(() => {
-    // Use global singleton to prevent duplicate connections
-    if (isGlobalConnecting || (globalWs && globalWs.readyState !== WebSocket.CLOSED)) {
-      console.log('Using existing global WebSocket connection');
+    // If global WebSocket already exists and is open/connecting, reuse it
+    if (globalWs && globalWs.readyState !== WebSocket.CLOSED) {
+      console.log('Reusing existing global WebSocket connection, reattaching handlers');
       wsRef.current = globalWs;
-      if (globalWs && globalWs.readyState === WebSocket.OPEN) {
+      
+      // Always reattach handlers to ensure this component instance receives messages
+      globalWs.onmessage = handleMessage;
+      globalWs.onclose = () => {
+        console.log('WebSocket Disconnected');
+        setIsConnected(false);
+        globalWs = null;
+        isGlobalConnecting = false;
+      };
+      
+      if (globalWs.readyState === WebSocket.OPEN) {
         setIsConnected(true);
       }
+      return;
+    }
+    
+    // Prevent duplicate connection attempts
+    if (isGlobalConnecting) {
+      console.log('WebSocket connection already in progress');
       return;
     }
     
@@ -74,58 +140,13 @@ export function useWebSocket(): UseWebSocketReturn {
       isGlobalConnecting = false;
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        
-        // Track message count for debugging
-        messageCountRef.current++;
-        
-        // Log all message types for debugging (but not too verbose for brain_state)
-        if (message.type !== 'brain_state' && message.type !== 'visual_params' && message.type !== 'music_events') {
-          console.log('WebSocket message received:', message.type, message);
-        } else if (messageCountRef.current % 50 === 0) {
-          console.log(`WebSocket: Received ${messageCountRef.current} messages`);
-        }
-        
-        switch (message.type) {
-          case 'brain_state':
-            setBrainState(message.data);
-            setBrainStateHistory(prev => {
-              const newHistory = [...prev, message.data];
-              if (newHistory.length > 50) return newHistory.slice(newHistory.length - 50);
-              return newHistory;
-            });
-            break;
-          case 'music_events':
-            setMusicEvents(message.data);
-            break;
-          case 'visual_params':
-            setVisualParams(message.data);
-            break;
-          case 'session_started':
-            console.log('✅ Session started message received!', message);
-            setIsSessionActive(true);
-            break;
-          case 'session_stopped':
-            console.log('⏹️ Session stopped message received!', message);
-            setIsSessionActive(false);
-            break;
-          case 'error':
-            console.error('Server error:', message);
-            break;
-          default:
-            console.warn('Unknown message type:', message.type);
-            break;
-        }
-      } catch (err) {
-        console.error('Error parsing WebSocket message:', err);
-      }
-    };
+    ws.onmessage = handleMessage;
 
     ws.onclose = () => {
       console.log('WebSocket Disconnected');
       setIsConnected(false);
+      globalWs = null;
+      isGlobalConnecting = false;
     };
 
     ws.onerror = (error) => {
@@ -143,7 +164,7 @@ export function useWebSocket(): UseWebSocketReturn {
         wsRef.current = null;
       }
     };
-  }, [sessionId]);
+  }, [sessionId, handleMessage]);
 
   const startSession = useCallback(() => {
     console.log('startSession called', {
@@ -153,12 +174,15 @@ export function useWebSocket(): UseWebSocketReturn {
     });
     
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log('Sending start_session message');
+      // Re-attach message handler before starting session to ensure we receive data
+      // This fixes race condition where handler might be stale after re-renders
+      wsRef.current.onmessage = handleMessage;
+      console.log('Sending start_session message (handler re-attached)');
       wsRef.current.send(JSON.stringify({ type: 'start_session' }));
     } else {
       console.error('Cannot start session - WebSocket not connected. ReadyState:', wsRef.current?.readyState);
     }
-  }, []);
+  }, [handleMessage]);
 
   const stopSession = useCallback(() => {
     console.log('stopSession called', {
@@ -168,12 +192,14 @@ export function useWebSocket(): UseWebSocketReturn {
     });
     
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      // Re-attach message handler to ensure we receive stop confirmation
+      wsRef.current.onmessage = handleMessage;
       console.log('Sending stop_session message');
       wsRef.current.send(JSON.stringify({ type: 'stop_session' }));
     } else {
       console.error('Cannot stop session - WebSocket not connected');
     }
-  }, []);
+  }, [handleMessage]);
 
   return {
     isConnected,

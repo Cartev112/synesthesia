@@ -233,9 +233,9 @@ export class WebAudioPlayer {
   private getWaveformForLayer(layer: string): OscillatorType {
     switch (layer) {
       case 'bass':
-        return 'sawtooth';
-      case 'harmony':
         return 'sine';
+      case 'harmony':
+        return 'sawtooth';
       case 'melody':
         return 'triangle';
       case 'texture':

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Connection Test</h1>
+    <button onclick="testConnection()">Test WebSocket</button>
+    <div id="status"></div>
+    <div id="messages"></div>
+
+    <script>
+        function testConnection() {
+            const statusDiv = document.getElementById('status');
+            const messagesDiv = document.getElementById('messages');
+            
+            statusDiv.innerHTML = 'Connecting...';
+            messagesDiv.innerHTML = '';
+            
+            const ws = new WebSocket('ws://localhost:8000/ws/stream/test-session');
+            
+            ws.onopen = () => {
+                statusDiv.innerHTML = '<span style="color: green;">✓ Connected!</span>';
+                messagesDiv.innerHTML += '<p>Connection established</p>';
+                
+                // Send start_session message
+                ws.send(JSON.stringify({ type: 'start_session' }));
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                messagesDiv.innerHTML += `<p><strong>${data.type}:</strong> ${JSON.stringify(data)}</p>`;
+            };
+            
+            ws.onerror = (error) => {
+                statusDiv.innerHTML = '<span style="color: red;">✗ Error</span>';
+                messagesDiv.innerHTML += `<p style="color: red;">Error: ${error}</p>`;
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onclose = () => {
+                statusDiv.innerHTML += '<br><span style="color: orange;">Connection closed</span>';
+            };
+        }
+    </script>
+</body>
+</html>

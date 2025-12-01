@@ -12,11 +12,12 @@ export interface AudioEngineConfig {
   stepInterval?: number; // milliseconds between music generation steps
 }
 
+// NOTE: Keep synth types in sync with WebAudioPlayer.getWaveformForLayer()
 const DEFAULT_TRACKS: TrackConfig[] = [
-  { name: 'bass', synthType: 'sawtooth', volume: 0.7, mute: false, solo: false },
-  { name: 'harmony', synthType: 'sine', volume: 0.5, mute: false, solo: false },
-  { name: 'melody', synthType: 'triangle', volume: 0.6, mute: false, solo: false },
-  { name: 'texture', synthType: 'sine', volume: 0.4, mute: false, solo: false },
+  { name: 'bass', synthType: 'sine', volume: 0.35, mute: false, solo: false },
+  { name: 'harmony', synthType: 'sawtooth', volume: 0.5, mute: false, solo: false },
+  { name: 'melody', synthType: 'triangle', volume: 0.5, mute: false, solo: false },
+  { name: 'texture', synthType: 'square', volume: 0.4, mute: false, solo: false },
 ];
 
 export class FrontendAudioEngine {
@@ -39,9 +40,9 @@ export class FrontendAudioEngine {
     neutral: 0.5,
     relax: 0.5,
   };
-
+  
   constructor(config: AudioEngineConfig = {}) {
-    this.stepInterval = config.stepInterval || 125; // 125ms = 8 steps per second
+    this.stepInterval = config.stepInterval || 187.5; // 125ms = 8 steps per second
     this.musicGenerator = new MusicGenerator();
   }
 
@@ -210,7 +211,9 @@ export class FrontendAudioEngine {
   private generateAndPlayStep(scheduleTime: number): void {
     if (!this.audioContext) return;
 
-    const events = this.musicGenerator.generateStep(this.brainState);
+    // Pass actual step duration in seconds to ensure note durations match scheduling
+    const stepDurationSeconds = this.stepInterval / 1000;
+    const events = this.musicGenerator.generateStep(this.brainState, stepDurationSeconds);
 
     // Check for solo tracks
     const hasSolo = Array.from(this.tracks.values()).some(t => t.solo);
@@ -248,27 +251,33 @@ export class FrontendAudioEngine {
 
     const now = this.audioContext.currentTime;
     
-    // Low-pass filter cutoff based on brain state
-    // Relax = lower cutoff (darker, warmer)
-    // Focus = higher cutoff (brighter, clearer)
-    const minCutoff = 800;   // Hz
-    const maxCutoff = 4000;  // Hz
-    const cutoff = minCutoff + (this.brainState.focus * (maxCutoff - minCutoff));
+    // Low-pass filter cutoff based on brain state (3 states)
+    // Focus = highest cutoff (bright, clear)
+    // Neutral = middle cutoff (balanced)
+    // Relax = lowest cutoff (dark, warm)
+    const focusCutoff = 4000;   // Hz - brightest
+    const neutralCutoff = 2000; // Hz - balanced
+    const relaxCutoff = 800;    // Hz - warmest
+    
+    // Weighted blend of all three states
+    const { focus, neutral, relax } = this.brainState;
+    const total = focus + neutral + relax || 1; // Avoid division by zero
+    const cutoff = (focus * focusCutoff + neutral * neutralCutoff + relax * relaxCutoff) / total;
     
     // Smooth transition
     this.lowPassFilter.frequency.cancelScheduledValues(now);
-    this.lowPassFilter.frequency.setTargetAtTime(cutoff, now, 0.1);
+    this.lowPassFilter.frequency.setTargetAtTime(cutoff, now, 1);
     
-    // Reverb mix based on brain state
-    // Relax = more reverb (spacey, ambient)
-    // Focus = less reverb (dry, present)
-    const minReverb = 0.3;  // 30% wet
-    const maxReverb = 0.8;  // 80% wet
-    const reverbMix = minReverb + (this.brainState.relax * (maxReverb - minReverb));
+    // Reverb mix based on brain state (3 states)
+    // Focus = dry (0.1), Neutral = balanced (0.4), Relax = wet (0.8)
+    const focusReverb = 0.1;    // Dry, present
+    const neutralReverb = 0.4;  // Balanced
+    const relaxReverb = 0.8;    // Spacey, ambient
+    const reverbMix = (focus * focusReverb + neutral * neutralReverb + relax * relaxReverb) / total;
     
     // Adjust dry/wet balance
     this.reverbGain.gain.cancelScheduledValues(now);
-    this.reverbGain.gain.setTargetAtTime(reverbMix, now, 0.1);
+    this.reverbGain.gain.setTargetAtTime(reverbMix, now, 0.5);
     
     if (this.dryGain) {
       this.dryGain.gain.cancelScheduledValues(now);

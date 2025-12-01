@@ -14,12 +14,13 @@ logger = get_logger(__name__)
 
 # Default baseline for all visual parameters. Only a handful of fields will be
 # mapped dynamically from brain-state input; the rest remain constant.
+# NOTE: These defaults MUST match frontend/src/features/visualizer/ParameterControls.tsx
 DEFAULT_VISUAL_PARAMS: Dict[str, float] = {
     'frequency_ratio_x': 3.0,
     'frequency_ratio_y': 2.0,
     'phase_offset': 0.0,
-    'amplitude_x': 0.9,
-    'amplitude_y': 0.9,
+    'amplitude_x': 0.8,
+    'amplitude_y': 0.8,
     'rotation_speed': 0.0,
     'num_harmonics': 5,
     'hue_base': 180.0,
@@ -27,25 +28,25 @@ DEFAULT_VISUAL_PARAMS: Dict[str, float] = {
     'brightness': 0.8,
     'color_cycle_speed': 0.2,
     'recursion_depth': 2,
-    'point_density': 1000,
-    'trail_length': 0.5,
+    'point_density': 1024,
+    'trail_length': 0.9,
     'distortion_amount': 0.1,
     'speed_multiplier': 1.0,
     'pulse_frequency': 1.0,
-    'pulse_amplitude': 0.2,
-    'damping_x': 0.02,
-    'damping_y': 0.02,
-    'num_epicycles': 6,
+    'pulse_amplitude': 0.0,
+    'damping_x': 0.03,
+    'damping_y': 0.03,
+    'num_epicycles': 5,
     'epicycle_decay': 0.7,
-    'portal_symmetry': 8,
+    'portal_symmetry': 6,
     'portal_radial_frequency': 6.0,
     'portal_angular_frequency': 2.0,
-    'portal_warp': 0.4,
-    'portal_spiral': 0.0,
+    'portal_warp': 0.15,
+    'portal_spiral': -1.5,
     'portal_layers': 4,
-    'portal_radius': 0.55,
-    'portal_ripple': 0.25,
-    'portal_depth_skew': 0.4
+    'portal_radius': 0.48,
+    'portal_ripple': 0.2,
+    'portal_depth_skew': 0.35
 }
 
 DEFAULT_BRAIN_STATE = {
@@ -75,7 +76,7 @@ class VisualParameterGenerator:
     def __init__(self):
         """Initialize visual parameter generator."""
         self.last_params = None
-        self.smoothing_factor = 0.1  # Smooth transitions
+        self.smoothing_factor = 0.2  # Smooth transitions (higher = more responsive)
         
         logger.info("visual_parameter_generator_initialized")
     
@@ -102,19 +103,31 @@ class VisualParameterGenerator:
         stability = brain_state.get('stability', 0.5)
         
         overrides = {
-            # Relaxation yields longest trails, focus shortest, neutral in between.
-            # Normalize via weighted mix while respecting [0.3, 0.8].
+            # Trail length: relax = long trails (0.95), focus = short trails (0.7)
+            # Wider range for more visible effect
             'trail_length': np.clip(
-                0.3 * focus + 0.5 * neutral + 0.8 * relax,
-                0.3,
-                0.8
+                0.8 + relax * 0.25 - focus * 0.2,
+                0.6,
+                0.95
             ),
-            # Hemispheric asymmetry controls slow rotation (-0.5 to 0.5 rad/sec)
-            'rotation_speed': np.clip(asymmetry * 0.5, -0.5, 0.5),
-            # Focus drives speed (0.6 - 1.4)
-            'speed_multiplier': np.clip(0.6 + focus * 0.8, 0.6, 1.4),
-            # Stability/focus control depth layers (3 - 7)
-            'portal_layers': int(np.clip(3 + stability * 2 + focus, 3, 7))
+            # Rotation speed: asymmetry controls direction, but also add subtle
+            # rotation based on state difference for visual interest
+            'rotation_speed': np.clip(
+                asymmetry * 0.4 + (relax - focus) * 0.15,
+                -0.5,
+                0.5
+            ),
+            # Speed: focus = faster (1.4), relax = slower (0.5)
+            'speed_multiplier': np.clip(0.5 + focus * 0.9, 0.5, 1.4),
+            # Portal layers: more layers with higher focus/stability (3-7)
+            'portal_layers': int(np.clip(3 + stability * 2 + focus * 2, 3, 7)),
+            # Color cycle speed: focus = fast (0.5), neutral = medium (0.2), relax = slow (0.05)
+            # Weighted blend of all three states
+            'color_cycle_speed': np.clip(
+                (focus * 0.5 + neutral * 0.2 + relax * 0.05) / max(focus + neutral + relax, 0.01),
+                0.05,
+                0.5
+            )
         }
         
         new_params = self._build_param_set(

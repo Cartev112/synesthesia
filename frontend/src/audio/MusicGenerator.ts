@@ -43,7 +43,6 @@ export class MusicGenerator {
   private currentChordRoot: number = 0; // Root note of current chord
   private nextChord: number[] = [0, 4, 7]; // Next triad for passing notes
   private nextChordRoot: number = 0; // Next chord root
-  private tempo: number = 80; // Fixed tempo
   private textureArpIndex: number = 0; // Current position in arpeggio
   private progressionIndex: number = 0; // Position in current progression
   private currentProgression: number[] = PROGRESSIONS[0]; // Active progression
@@ -51,10 +50,10 @@ export class MusicGenerator {
 
   /**
    * Generate events for all layers
+   * @param brainState Current brain state
+   * @param stepDuration Duration of one step in seconds (passed from engine)
    */
-  generateStep(brainState: BrainState): Record<string, MidiEvent[]> {
-    const stepDuration = 60 / this.tempo / 4; // 16th note duration
-
+  generateStep(brainState: BrainState, stepDuration: number): Record<string, MidiEvent[]> {
     // Update chord every 4 beats (16 steps at 16th note resolution)
     if (this.stepCount % 16 === 0) {
       this.updateChord();
@@ -72,7 +71,7 @@ export class MusicGenerator {
   }
 
   /**
-   * Update current chord (every 2 beats)
+   * Update current chord (every 4 beats)
    */
   private updateChord(): void {
     // Move next chord to current
@@ -80,7 +79,7 @@ export class MusicGenerator {
     this.currentChordRoot = this.nextChordRoot;
     this.chordChangeCount++;
 
-    // Change progression every 8 chords (16 beats)
+    // Change progression every 8 chords (32 beats)
     if (this.chordChangeCount % 8 === 0) {
       this.currentProgression = PROGRESSIONS[Math.floor(Math.random() * PROGRESSIONS.length)];
       this.progressionIndex = 0;
@@ -137,8 +136,8 @@ export class MusicGenerator {
     // Play chord root on beat 1 of every 4 beats (when chord changes)
     if (this.stepCount % 16 === 0) {
       const note = this.currentRoot + this.currentChordRoot - 24; // Two octaves below
-      // Shorten duration if passing note will play
-      const duration = brainState.focus > 0.5 ? 7 : 15.5; // Stop before passing note or hold full duration
+      // Shorten duration if passing note will play, with gap before next event
+      const duration = brainState.focus > 0.5 ? 6.5 : 13; // Stop well before passing note or next chord
       events.push({
         note,
         velocity: 85 + Math.random() * 15,
@@ -193,7 +192,7 @@ export class MusicGenerator {
         events.push({
           note: this.currentRoot + chordTone,
           velocity: 45 + Math.random() * 15,
-          duration: stepDuration * 16, // Hold for 4 beats
+          duration: stepDuration * 13, // Hold for 3.25 beats with gap before next chord
           time: 0,
         });
       }

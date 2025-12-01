@@ -115,7 +115,7 @@ export function renderHarmonograph(
   const numHarmonics = params.num_harmonics ?? 5;
   const pointDensity = params.point_density ?? 1024;
   const pulseFreq = params.pulse_frequency ?? 1.0;
-  const pulseAmp = params.pulse_amplitude ?? 0.2;
+  const pulseAmp = params.pulse_amplitude ?? 0.0;
   const dampX = params.damping_x ?? 0.03;
   const dampY = params.damping_y ?? 0.03;
   
@@ -258,6 +258,7 @@ export function renderLorenz(
  * Organic patterns from Gray-Scott model
  */
 // Persistent state for reaction-diffusion simulation
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let rdState: {
   u: number[][];
   v: number[][];
@@ -266,11 +267,11 @@ let rdState: {
 } | null = null;
 
 export function renderReactionDiffusion(
-  ctx: CanvasRenderingContext2D,
-  params: VisualParams,
-  width: number,
-  height: number,
-  time: number
+  _ctx: CanvasRenderingContext2D,
+  _params: VisualParams,
+  _width: number,
+  _height: number,
+  _time: number
 ): RenderResult | void {
   /* Reaction diffusion renderer disabled */
   return;
@@ -287,18 +288,18 @@ export function renderHyperspacePortal(
   height: number,
   time: number
 ): RenderResult {
-  const symmetry = Math.max(3, Math.floor(params.portal_symmetry ?? 8));
+  const symmetry = Math.max(3, Math.floor(params.portal_symmetry ?? 6));
   const radialFreq = params.portal_radial_frequency ?? 6.0;
   const angularFreq = params.portal_angular_frequency ?? 2.0;
-  const warp = params.portal_warp ?? 0.4;
-  const spiral = params.portal_spiral ?? 0.6;
+  const warp = params.portal_warp ?? 0.15;
+  const spiral = params.portal_spiral ?? -1.5;
   const layers = Math.max(2, Math.floor(params.portal_layers ?? 4));
-  const baseRadius = params.portal_radius ?? 0.55;
-  const ripple = params.portal_ripple ?? 0.25;
-  const depthSkew = params.portal_depth_skew ?? 0.4;
+  const baseRadius = params.portal_radius ?? 0.48;
+  const ripple = params.portal_ripple ?? 0.2;
+  const depthSkew = params.portal_depth_skew ?? 0.35;
   const pointDensity = params.point_density ?? 1800;
-  const pulseAmp = params.pulse_amplitude ?? 0.18;
-  const pulseFreq = params.pulse_frequency ?? 1.1;
+  const pulseAmp = params.pulse_amplitude ?? 0.0;
+  const pulseFreq = params.pulse_frequency ?? 1.0;
 
   const centerX = width / 2;
   const centerY = height / 2;
@@ -307,10 +308,10 @@ export function renderHyperspacePortal(
   const rotation = params._accumulatedRotation ?? 0;
   const densityPerLayer = Math.max(64, Math.floor(pointDensity / layers));
 
-  const hueBase = params.hue_base ?? 200;
-  const saturation = params.saturation ?? 0.75;
-  const brightness = params.brightness ?? 0.7;
-  const colorCycleSpeed = params.color_cycle_speed ?? 0.3;
+  const hueBase = params.hue_base ?? 180;
+  const saturation = params.saturation ?? 0.7;
+  const brightness = params.brightness ?? 0.8;
+  const colorCycleSpeed = params.color_cycle_speed ?? 0.2;
 
   const layersOut: ColoredLayer[] = [];
 
