@@ -62,7 +62,7 @@ class EEGSimulator:
         # Transition parameters
         self.target_state: BrainState = "relax"
         self.transition_start_time: Optional[float] = None
-        self.transition_duration: float = 2.0  # seconds
+        self.transition_duration: float = 3.0  # seconds
         
         # Auto-variation for demo mode
         self.auto_vary_states: bool = True
@@ -104,7 +104,7 @@ class EEGSimulator:
         self,
         state: BrainState,
         intensity: float = 1.0,
-        transition_time: float = 2.0
+        transition_time: float = 3.0
     ) -> None:
         """
         Set target mental state with smooth transition.
