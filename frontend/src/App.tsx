@@ -63,18 +63,18 @@ function App() {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans p-4 md:p-8 overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-syn-dark via-[#050510] to-black">
       <div className="h-[calc(100vh-4rem)] flex flex-col">
-        <header className="mb-8 flex justify-between items-center flex-none">
+        <header className="mb-8 flex justify-between items-center flex-none relative">
           <div>
             <h1 className="text-4xl md:text-6xl font-bold font-display text-transparent bg-clip-text bg-gradient-to-r from-syn-cyan via-syn-purple to-syn-cyan animate-pulse tracking-tighter">
               SYNESTHESIA
             </h1>
             <p className="text-sm md:text-lg text-muted-foreground font-mono mt-1 border-l-2 border-syn-cyan pl-4">
-              NEURAL_INTERFACE // {isConnected ? 'ONLINE' : 'OFFLINE'}
+              NEURAL_INTERFACE // {isConnected ? 'ONLINE (SIM)' : 'OFFLINE'}
             </p>
           </div>
           
-          {/* Brain State - Centered in header */}
-          <div className="inline-flex items-center gap-6 px-6 py-3 rounded-xl border border-white/10 bg-card/50 backdrop-blur-md shadow-lg">
+          {/* Brain State - Absolutely centered in header */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 inline-flex items-center gap-6 px-6 py-3 rounded-xl border border-white/10 bg-card/50 backdrop-blur-md shadow-lg">
             <div className="text-center">
               <div className="text-2xl font-display font-bold text-syn-green">
                 {brainState ? (
@@ -85,7 +85,6 @@ function App() {
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">CURRENT STATE</div>
             </div>
-            
           </div>
 
           <div className="text-right hidden md:flex flex-col items-end gap-2">
