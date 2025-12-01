@@ -92,20 +92,9 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive
     resize();
 
     const draw = () => {
-      // Use CSS dimensions (rect) for calculations - ctx is already scaled by DPR
       const rect = canvas.getBoundingClientRect();
       const width = rect.width;
       const height = rect.height;
-      
-      // Ensure canvas buffer matches current size (handles dynamic resizing)
-      const dpr = window.devicePixelRatio || 1;
-      if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.scale(dpr, dpr);
-      }
-      
       const p = paramsRef.current || {};
       const algo = algorithmRef.current;
       const active = isActiveRef.current;
