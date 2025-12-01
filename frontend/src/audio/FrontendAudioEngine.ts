@@ -144,7 +144,7 @@ export class FrontendAudioEngine {
   }
 
   /**
-   * Start music generation and playback
+   * Start music generation and playback with fade in
    */
   start(): void {
     if (!this.audioContext || !this.masterGain) {
@@ -164,6 +164,12 @@ export class FrontendAudioEngine {
     this.isPlaying = true;
     this.musicGenerator.reset();
     
+    // Fade in master volume over 2 seconds
+    const now = this.audioContext.currentTime;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(0, now);
+    this.masterGain.gain.linearRampToValueAtTime(0.8, now + 2);
+    
     // Initialize next step time to current audio time
     this.nextStepTime = this.audioContext.currentTime;
 
@@ -173,20 +179,35 @@ export class FrontendAudioEngine {
       this.scheduleSteps();
     }, 25);
 
-    console.log('▶️  Audio engine started');
+    console.log('▶️  Audio engine started (fading in)');
   }
 
   /**
-   * Stop music generation and playback
+   * Stop music generation and playback with fade out
    */
   stop(): void {
-    if (this.generationInterval !== null) {
-      clearInterval(this.generationInterval);
-      this.generationInterval = null;
+    if (!this.audioContext || !this.masterGain) {
+      this.isPlaying = false;
+      return;
     }
 
-    this.isPlaying = false;
-    console.log('⏸️  Audio engine stopped');
+    // Fade out master volume over 1 second
+    const now = this.audioContext.currentTime;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+    this.masterGain.gain.linearRampToValueAtTime(0, now + 1);
+
+    // Stop generation after fade out completes
+    setTimeout(() => {
+      if (this.generationInterval !== null) {
+        clearInterval(this.generationInterval);
+        this.generationInterval = null;
+      }
+      this.isPlaying = false;
+      console.log('⏸️  Audio engine stopped');
+    }, 1000);
+
+    console.log('⏸️  Audio engine fading out...');
   }
 
   /**
@@ -266,7 +287,7 @@ export class FrontendAudioEngine {
     
     // Smooth transition
     this.lowPassFilter.frequency.cancelScheduledValues(now);
-    this.lowPassFilter.frequency.setTargetAtTime(cutoff, now, 1);
+    this.lowPassFilter.frequency.setTargetAtTime(cutoff, now, 3);
     
     // Reverb mix based on brain state (3 states)
     // Focus = dry (0.1), Neutral = balanced (0.4), Relax = wet (0.8)
@@ -277,11 +298,11 @@ export class FrontendAudioEngine {
     
     // Adjust dry/wet balance
     this.reverbGain.gain.cancelScheduledValues(now);
-    this.reverbGain.gain.setTargetAtTime(reverbMix, now, 0.5);
+    this.reverbGain.gain.setTargetAtTime(reverbMix, now, 2);
     
     if (this.dryGain) {
       this.dryGain.gain.cancelScheduledValues(now);
-      this.dryGain.gain.setTargetAtTime(1 - reverbMix, now, 0.1);
+      this.dryGain.gain.setTargetAtTime(1 - reverbMix, now, 2);
     }
   }
 

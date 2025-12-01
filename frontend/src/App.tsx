@@ -156,7 +156,7 @@ function App() {
           {/* Center Column: Visualizer */}
           <div className="md:col-span-6 h-full min-h-[400px] relative">
             <div className="absolute inset-0">
-              <VisualCanvas params={activeVisualParams} algorithm={selectedAlgorithm} />
+              <VisualCanvas params={activeVisualParams} algorithm={selectedAlgorithm} isActive={isSessionActive} />
             </div>
 
             {manualParams && (

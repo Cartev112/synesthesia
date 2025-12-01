@@ -253,18 +253,6 @@ export function renderLorenz(
   });
 }
 
-/**
- * Reaction-Diffusion pattern renderer
- * Organic patterns from Gray-Scott model
- */
-// Persistent state for reaction-diffusion simulation
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-let rdState: {
-  u: number[][];
-  v: number[][];
-  lastUpdate: number;
-  size: number;
-} | null = null;
 
 export function renderReactionDiffusion(
   _ctx: CanvasRenderingContext2D,

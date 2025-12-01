@@ -286,35 +286,47 @@ class EEGSimulator:
         """
         Get current band powers based on mental state.
         
+        Uses realistic modulation ranges based on EEG literature:
+        - Real EEG typically shows 20-50% power changes between states
+        - Alpha increases ~30-40% during relaxation (eyes closed)
+        - Beta increases ~25-35% during focused attention
+        
         Returns:
             Dictionary of band powers
         """
-        # Neutral baseline: balanced powers
+        # Neutral baseline: realistic relative powers
+        # Based on typical awake EEG: alpha dominant, decreasing power at higher freqs
         powers = {
             'delta': 1.0,
-            'theta': 1.0,
-            'alpha': 1.0,
-            'beta': 1.0,
-            'gamma': 0.5
+            'theta': 0.9,
+            'alpha': 1.2,  # Alpha typically strongest in relaxed awake
+            'beta': 0.7,
+            'gamma': 0.3
         }
         
         intensity = self.state_intensity
         
+        # Add natural variability (±10%) to all bands
+        for band in powers:
+            powers[band] *= self.rng.uniform(0.9, 1.1)
+        
         if self.mental_state == "focus":
-            # Focus: HIGH beta and gamma, LOW alpha and theta
-            powers['beta'] = 1.0 + (1.5 * intensity)  # Up to 2.5
-            powers['gamma'] = 0.5 + (0.8 * intensity)  # Up to 1.3
-            powers['alpha'] = 1.0 - (0.7 * intensity)  # Down to 0.3
-            powers['theta'] = 1.0 - (0.7 * intensity)  # Down to 0.3
-            powers['delta'] = 1.0 - (0.4 * intensity)  # Down to 0.6
+            # Focus: moderate beta/gamma increase, moderate alpha/theta decrease
+            # Literature: ~30% beta increase, ~25% alpha decrease during concentration
+            powers['beta'] *= 1.0 + (0.35 * intensity)   # Up to +35%
+            powers['gamma'] *= 1.0 + (0.25 * intensity)  # Up to +25%
+            powers['alpha'] *= 1.0 - (0.30 * intensity)  # Down to -30%
+            powers['theta'] *= 1.0 - (0.20 * intensity)  # Down to -20%
+            powers['delta'] *= 1.0 - (0.15 * intensity)  # Down to -15%
             
         elif self.mental_state == "relax":
-            # Relax: HIGH alpha and theta, LOW beta and gamma
-            powers['alpha'] = 1.0 + (2.5 * intensity)  # Up to 3.5
-            powers['theta'] = 1.0 + (1.5 * intensity)  # Up to 2.5
-            powers['beta'] = 1.0 - (0.8 * intensity)  # Down to 0.2
-            powers['gamma'] = 0.5 - (0.4 * intensity)  # Down to 0.1
-            powers['delta'] = 1.0 + (0.5 * intensity)  # Up to 1.5
+            # Relax: moderate alpha/theta increase, moderate beta/gamma decrease
+            # Literature: ~40% alpha increase during relaxation
+            powers['alpha'] *= 1.0 + (0.45 * intensity)  # Up to +45%
+            powers['theta'] *= 1.0 + (0.30 * intensity)  # Up to +30%
+            powers['beta'] *= 1.0 - (0.25 * intensity)   # Down to -25%
+            powers['gamma'] *= 1.0 - (0.20 * intensity)  # Down to -20%
+            powers['delta'] *= 1.0 + (0.15 * intensity)  # Up to +15%
         
         return powers
     

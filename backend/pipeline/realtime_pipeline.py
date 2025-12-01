@@ -124,6 +124,16 @@ class RealtimePipeline:
         self.session_start_time = time.time()
         self.sample_count = 0
         
+        # Pre-fill buffer so data flows immediately on first iteration
+        # Need 256 samples (1 second) for feature extraction
+        warmup_samples = 256
+        warmup_data = self.eeg_source.read_samples(warmup_samples)
+        if warmup_data is not None:
+            processed = self.preprocessor.process_chunk(warmup_data)
+            self.buffer.append(processed)
+            self.sample_count += warmup_samples
+            logger.info("buffer_prefilled", samples=warmup_samples)
+        
         logger.info("pipeline_started")
         
         # Start processing loop
@@ -206,23 +216,42 @@ class RealtimePipeline:
                         self.metrics['ml_inference_time'].append(time.time() - t0)
                     else:
                         # Use raw features without classification
-                        # Normalize metrics to 0-1 range
+                        # Normalize metrics using empirically measured ranges from simulator
                         focus_raw = features['focus_metric']
                         relax_raw = features['relax_metric']
                         
-                        # Better normalization based on typical ranges:
-                        # focus_metric: 0.1-1.5 (neutral=0.3, focus=1.3)
-                        # relax_metric: 0.1-5.0 (neutral=1.3, relax=5.0)
-                        focus_norm = min(max((focus_raw - 0.2) / 1.2, 0.0), 1.0)
-                        relax_norm = min(max((relax_raw - 0.5) / 4.0, 0.0), 1.0)
+                        # Empirical baselines from test_state_switching.py:
+                        # focus_metric = beta / (alpha + theta)
+                        #   - Neutral: ~0.30, Focus: ~0.53, Relax: ~0.17
+                        # relax_metric = alpha / (beta + gamma)
+                        #   - Neutral: ~2.5, Relax: ~4.0, Focus: ~1.4
+                        
+                        # Use neutral as baseline, measure deviation
+                        focus_baseline = 0.30
+                        relax_baseline = 2.5
+                        
+                        # Expected ranges for each state
+                        focus_range = 0.23   # 0.53 - 0.30 for focus
+                        relax_range = 1.5    # 4.0 - 2.5 for relax
+                        
+                        # Deviation from baseline, normalized to expected range
+                        focus_deviation = (focus_raw - focus_baseline) / focus_range
+                        relax_deviation = (relax_raw - relax_baseline) / relax_range
+                        
+                        # Convert deviations to 0-1 scores using sigmoid
+                        # Steeper sigmoid (3.0) for more responsive state detection
+                        focus_score = 1.0 / (1.0 + np.exp(-focus_deviation * 3.0))
+                        relax_score = 1.0 / (1.0 + np.exp(-relax_deviation * 3.0))
+                        
+                        # Neutral is high when both focus and relax are near baseline
+                        # Use product of inverse deviations
+                        neutral_score = np.exp(-(focus_deviation**2 + relax_deviation**2))
                         
                         # Normalize to sum to 1.0
-                        total = focus_norm + relax_norm
-                        if total > 0:
-                            focus_norm = focus_norm / (total + 0.5)  # Add baseline for neutral
-                            relax_norm = relax_norm / (total + 0.5)
-                        
-                        neutral_norm = max(0.0, 1.0 - focus_norm - relax_norm)
+                        total = focus_score + relax_score + neutral_score
+                        focus_norm = focus_score / total
+                        relax_norm = relax_score / total
+                        neutral_norm = neutral_score / total
                         
                         brain_state = {
                             'focus': focus_norm,

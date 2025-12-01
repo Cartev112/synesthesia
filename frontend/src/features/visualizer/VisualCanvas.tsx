@@ -46,21 +46,25 @@ interface VisualParams {
 interface VisualCanvasProps {
   params?: VisualParams | null;
   algorithm?: AlgorithmType;
+  isActive?: boolean; // Controls fade in/out
 }
 
-export function VisualCanvas({ params, algorithm = 'hyperspace_portal' }: VisualCanvasProps) {
+export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive = false }: VisualCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const paramsRef = useRef(params);
   const algorithmRef = useRef(algorithm);
   const lastFrameTimeRef = useRef(Date.now());
   const accumulatedPhaseRef = useRef(0);
   const accumulatedRotationRef = useRef(0);
+  const canvasOpacityRef = useRef(0); // Start at 0 (blank)
+  const isActiveRef = useRef(isActive);
 
   // Keep refs in sync with props for animation loop
   useEffect(() => {
     paramsRef.current = params;
     algorithmRef.current = algorithm;
-  }, [params, algorithm]);
+    isActiveRef.current = isActive;
+  }, [params, algorithm, isActive]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -93,6 +97,18 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal' }: Visual
       const height = rect.height;
       const p = paramsRef.current || {};
       const algo = algorithmRef.current;
+      const active = isActiveRef.current;
+      
+      // Calculate delta time
+      const now = Date.now();
+      const dt = (now - lastFrameTimeRef.current) / 1000;
+      lastFrameTimeRef.current = now;
+      
+      // Fade in/out based on active state (2s fade in, 1s fade out)
+      const targetOpacity = active ? 1 : 0;
+      const fadeSpeed = active ? 0.5 : 1.0; // 2s fade in, 1s fade out
+      const opacityDiff = targetOpacity - canvasOpacityRef.current;
+      canvasOpacityRef.current += opacityDiff * Math.min(dt * fadeSpeed, 1);
       
       // Extract parameters with defaults
       const hueBase = p.hue_base ?? 180;
@@ -103,11 +119,6 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal' }: Visual
       const speedMult = p.speed_multiplier ?? 1.0;
       const rotSpeed = p.rotation_speed ?? 0;
       
-      // Calculate delta time
-      const now = Date.now();
-      const dt = (now - lastFrameTimeRef.current) / 1000;
-      lastFrameTimeRef.current = now;
-      
       // Accumulate phase based on current speed (prevents jumps when speed changes)
       accumulatedPhaseRef.current += dt * speedMult;
       accumulatedRotationRef.current += dt * rotSpeed;
@@ -116,9 +127,16 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal' }: Visual
       const t = accumulatedPhaseRef.current;
       const rotation = accumulatedRotationRef.current;
       
-      // Clear with trail effect
-      ctx.fillStyle = `rgba(5, 5, 10, ${1 - trailLength})`;
+      // Clear canvas - use stronger clear when fading out for faster fade
+      const clearAlpha = active ? (1 - trailLength) : Math.max(1 - trailLength, 0.1);
+      ctx.fillStyle = `rgba(5, 5, 10, ${clearAlpha})`;
       ctx.fillRect(0, 0, width, height);
+      
+      // Skip rendering if fully faded out
+      if (canvasOpacityRef.current < 0.01) {
+        animationFrameId = requestAnimationFrame(draw);
+        return;
+      }
 
       // Render based on selected algorithm
       ctx.beginPath();
@@ -146,10 +164,13 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal' }: Visual
           break;
       }
       
+      // Apply fade opacity to all rendering
+      const fadeOpacity = canvasOpacityRef.current;
+      
       if (customLayers && customLayers.length > 0) {
         ctx.save();
         customLayers.forEach(layer => {
-          ctx.globalAlpha = layer.alpha ?? 1;
+          ctx.globalAlpha = (layer.alpha ?? 1) * fadeOpacity;
           ctx.lineWidth = layer.lineWidth ?? 2;
           ctx.strokeStyle = layer.color;
           ctx.lineCap = 'round';
@@ -177,7 +198,7 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal' }: Visual
           ctx.lineWidth = widths[idx];
           ctx.shadowBlur = blurs[idx];
           ctx.shadowColor = strokeColor;
-          ctx.globalAlpha = 0.9 - idx * 0.2;
+          ctx.globalAlpha = (0.9 - idx * 0.2) * fadeOpacity;
           ctx.stroke();
         });
 

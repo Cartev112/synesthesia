@@ -52,19 +52,28 @@ def test_state_switching():
         for band in ['delta', 'theta', 'alpha', 'beta', 'gamma']:
             print(f"    {band}: {features[f'{band}_power']:.3f}")
         
-        # Apply normalization (same as pipeline)
+        # Apply normalization (same as pipeline - empirically calibrated)
+        import numpy as np
         focus_raw = features['focus_metric']
         relax_raw = features['relax_metric']
         
-        focus_norm = min(max((focus_raw - 0.2) / 1.2, 0.0), 1.0)
-        relax_norm = min(max((relax_raw - 0.5) / 4.0, 0.0), 1.0)
+        # Empirical baselines from measured values
+        focus_baseline = 0.30
+        relax_baseline = 2.5
+        focus_range = 0.23
+        relax_range = 1.5
         
-        total = focus_norm + relax_norm
-        if total > 0:
-            focus_norm = focus_norm / (total + 0.5)
-            relax_norm = relax_norm / (total + 0.5)
+        focus_deviation = (focus_raw - focus_baseline) / focus_range
+        relax_deviation = (relax_raw - relax_baseline) / relax_range
         
-        neutral_norm = max(0.0, 1.0 - focus_norm - relax_norm)
+        focus_score = 1.0 / (1.0 + np.exp(-focus_deviation * 3.0))
+        relax_score = 1.0 / (1.0 + np.exp(-relax_deviation * 3.0))
+        neutral_score = np.exp(-(focus_deviation**2 + relax_deviation**2))
+        
+        total = focus_score + relax_score + neutral_score
+        focus_norm = focus_score / total
+        relax_norm = relax_score / total
+        neutral_norm = neutral_score / total
         
         # Display results
         print(f"  Raw Metrics:")
