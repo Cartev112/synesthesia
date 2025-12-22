@@ -31,6 +31,48 @@ export const sessionApi = {
   getCurrent: () => api.get('/sessions/current'),
 };
 
+// Device API - Muse S Athena
+export interface DeviceInfo {
+  name: string;
+  address: string;
+}
+
+export interface ScanResponse {
+  devices: DeviceInfo[];
+  count: number;
+}
+
+export interface DeviceStatus {
+  connected: boolean;
+  streaming: boolean;
+  address: string | null;
+  preset: string | null;
+  device_info: Record<string, any> | null;
+}
+
+export const deviceApi = {
+  scan: (timeout: number = 10) => 
+    api.get<ScanResponse>('/devices/muse/scan', { params: { timeout } }),
+  
+  connect: (address?: string, preset: string = 'full_research', bleName?: string) =>
+    api.post('/devices/muse/connect', { address, preset, ble_name: bleName }),
+  
+  disconnect: () => 
+    api.post('/devices/muse/disconnect'),
+  
+  getStatus: () => 
+    api.get<DeviceStatus>('/devices/muse/status'),
+  
+  getInfo: () => 
+    api.get('/devices/muse/info'),
+  
+  startStream: () => 
+    api.post('/devices/muse/stream', { action: 'start' }),
+  
+  stopStream: () => 
+    api.post('/devices/muse/stream', { action: 'stop' }),
+};
+
 // Audio API
 export const audioApi = {
   // Get configuration

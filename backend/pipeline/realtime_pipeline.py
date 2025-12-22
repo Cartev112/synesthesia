@@ -11,8 +11,11 @@ import time
 import numpy as np
 
 from backend.eeg.simulator import StreamingEEGSimulator
+from backend.eeg.device_interface import EEGDeviceInterface
+from backend.eeg.devices.muse_s_athena import MuseSAthenaDevice
 from backend.signal_processing import SignalPreprocessor, FeatureExtractor, CircularBuffer
 from backend.ml import ArtifactClassifier, MentalStateTracker, MentalStateClassifier
+from backend.ml.calibration import UserCalibration, CalibrationSession
 from backend.visual import VisualParameterGenerator
 from backend.core.logging import get_logger
 
@@ -30,11 +33,14 @@ class RealtimePipeline:
     def __init__(
         self,
         sampling_rate: int = 256,
-        use_simulator: bool = True,
+        device_type: str = "simulator",
+        device_address: Optional[str] = None,
+        device_preset: str = "full_research",
         on_brain_state: Optional[Callable] = None,
         on_music_events: Optional[Callable] = None,
         on_visual_params: Optional[Callable] = None,
         on_audio_buffer: Optional[Callable] = None,
+        on_features: Optional[Callable] = None,
         on_error: Optional[Callable] = None
     ):
         """
@@ -42,20 +48,26 @@ class RealtimePipeline:
         
         Args:
             sampling_rate: EEG sampling rate in Hz
-            use_simulator: Use simulator instead of real hardware
+            device_type: Device type - "simulator" or "muse_s_athena"
+            device_address: BLE address for Muse device (None for auto-discovery)
+            device_preset: OpenMuse preset for Muse device
             on_brain_state: Callback for brain state updates
             on_music_events: Callback for music events
             on_visual_params: Callback for visual parameters
+            on_features: Callback for feature vectors (used during calibration)
             on_error: Callback for errors
         """
         self.sampling_rate = sampling_rate
-        self.use_simulator = use_simulator
+        self.device_type = device_type
+        self.device_address = device_address
+        self.device_preset = device_preset
         
         # Callbacks
         self.on_brain_state = on_brain_state
         self.on_music_events = on_music_events
         self.on_visual_params = on_visual_params
         self.on_audio_buffer = on_audio_buffer
+        self.on_features = on_features
         self.on_error = on_error
         
         # Components
@@ -76,13 +88,16 @@ class RealtimePipeline:
         self.state_classifier = MentalStateClassifier()
         self.state_tracker = MentalStateTracker(classifier=self.state_classifier)
         
-        # Music generator (drives visual/brain-state events; audio now handled fully on frontend)
+        # User calibration (personalized model)
+        self.user_calibration: Optional[UserCalibration] = None
+        
         # Visual parameter generator
         self.visual_generator = VisualParameterGenerator()
         
         # State
         self.is_running = False
         self.is_calibrated = False
+        self.calibration_mode = False  # When True, sends features via on_features callback
         self.session_start_time = None
         self.sample_count = 0
         self.update_count = 0  # Track number of updates sent
@@ -99,7 +114,7 @@ class RealtimePipeline:
         logger.info(
             "realtime_pipeline_initialized",
             sampling_rate=sampling_rate,
-            use_simulator=use_simulator
+            device_type=device_type
         )
     
     async def start(self):
@@ -108,17 +123,25 @@ class RealtimePipeline:
             logger.warning("pipeline_already_running")
             return
         
-        # Initialize EEG source
-        if self.use_simulator:
+        # Initialize EEG source based on device type
+        if self.device_type == "simulator":
             self.eeg_source = StreamingEEGSimulator(
                 n_channels=8,
                 sampling_rate=self.sampling_rate
             )
             self.eeg_source.start_stream()
             logger.info("using_eeg_simulator")
+        elif self.device_type == "muse_s_athena":
+            self.eeg_source = MuseSAthenaDevice(
+                address=self.device_address,
+                preset=self.device_preset
+            )
+            if not self.eeg_source.connect():
+                raise RuntimeError("Failed to connect to Muse S Athena device")
+            self.eeg_source.start_stream()
+            logger.info("using_muse_s_athena", address=self.eeg_source._address)
         else:
-            # TODO: Initialize real hardware
-            raise NotImplementedError("Real hardware not yet implemented")
+            raise ValueError(f"Unknown device type: {self.device_type}")
         
         self.is_running = True
         self.session_start_time = time.time()
@@ -235,10 +258,33 @@ class RealtimePipeline:
                     features = self.extractor.extract_features(feature_window)
                     self.metrics['feature_extraction_time'].append(time.time() - t0)
                     
+                    # Convert to feature array for ML/calibration
+                    feature_array = self._features_to_array(features)
+                    
+                    # 5b. Send features if in calibration mode
+                    if self.calibration_mode and self.on_features:
+                        await self.on_features(feature_array)
+                    
                     # 6. ML inference
-                    if self.is_calibrated:
+                    if self.is_calibrated and self.user_calibration is not None:
+                        # Use personalized calibration model
                         t0 = time.time()
-                        feature_array = self._features_to_array(features)
+                        state, confidence = self.user_calibration.predict_state(feature_array)
+                        probs = self.user_calibration.get_state_probabilities(feature_array)
+                        self.metrics['ml_inference_time'].append(time.time() - t0)
+                        
+                        brain_state = {
+                            'focus': probs['focus'],
+                            'relax': probs['relax'],
+                            'neutral': probs['neutral'],
+                            'predicted_state': state,
+                            'confidence': confidence,
+                            'stability': confidence,
+                            **features
+                        }
+                    elif self.is_calibrated:
+                        # Use generic trained classifier
+                        t0 = time.time()
                         brain_state = self.state_tracker.update(feature_array)
                         self.metrics['ml_inference_time'].append(time.time() - t0)
                     else:
@@ -351,7 +397,7 @@ class RealtimePipeline:
     
     def calibrate(self, calibration_data: Dict[str, np.ndarray]):
         """
-        Calibrate the pipeline with user data.
+        Calibrate the pipeline with user data (legacy method).
         
         Args:
             calibration_data: Dictionary with keys 'neutral', 'focus', 'relax'
@@ -376,6 +422,57 @@ class RealtimePipeline:
         
         logger.info("pipeline_calibrated", n_samples=len(X))
     
+    def set_calibration_mode(self, enabled: bool) -> None:
+        """
+        Enable or disable calibration mode.
+        
+        When enabled, the pipeline sends feature vectors via on_features callback
+        for collection during calibration stages.
+        
+        Args:
+            enabled: Whether to enable calibration mode
+        """
+        self.calibration_mode = enabled
+        logger.info("calibration_mode_set", enabled=enabled)
+    
+    def apply_calibration(self, calibration: UserCalibration) -> None:
+        """
+        Apply a trained user calibration to the pipeline.
+        
+        Args:
+            calibration: Trained UserCalibration instance
+        """
+        if not calibration.is_trained():
+            raise ValueError("Calibration model is not trained")
+        
+        self.user_calibration = calibration
+        self.is_calibrated = True
+        self.calibration_mode = False  # Exit calibration mode
+        
+        logger.info(
+            "calibration_applied",
+            user_id=calibration.user_id
+        )
+    
+    def apply_calibration_session(self, session: CalibrationSession) -> None:
+        """
+        Apply a saved calibration session to the pipeline.
+        
+        Args:
+            session: Saved CalibrationSession to apply
+        """
+        # Create a new UserCalibration and load the session
+        calibration = UserCalibration(user_id=session.user_id)
+        calibration.load_session(session)
+        
+        self.apply_calibration(calibration)
+        
+        logger.info(
+            "calibration_session_applied",
+            user_id=session.user_id,
+            accuracy=session.validation_accuracy
+        )
+    
     def set_mental_state(self, state: str, intensity: float = 1.0):
         """
         Set simulator mental state (for testing).
@@ -384,7 +481,7 @@ class RealtimePipeline:
             state: Mental state ('neutral', 'focus', 'relax')
             intensity: State intensity (0-1)
         """
-        if self.use_simulator and self.eeg_source:
+        if self.device_type == "simulator" and self.eeg_source:
             self.eeg_source.set_mental_state(state, intensity)
             logger.debug("simulator_state_set", state=state, intensity=intensity)
     

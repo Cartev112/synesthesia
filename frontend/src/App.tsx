@@ -4,11 +4,15 @@ import { VisualSettings } from '@/features/visualizer/VisualSettings';
 import { ParameterControls } from '@/features/visualizer/ParameterControls';
 import { AudioControls } from '@/features/audio/AudioControls';
 import { EEGDisplay } from '@/features/eeg/EEGDisplay';
+import { CalibrationFlow } from '@/features/calibration/CalibrationFlow';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useAudioEngineContext } from '@/contexts/AudioEngineContext';
 import { Button } from '@/components/ui/button';
-import { Power, Wifi, WifiOff, Menu, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { DeviceConfigModal } from '@/components/DeviceConfigModal';
+import { Power, Wifi, WifiOff, Menu, X, ChevronDown, ChevronUp, Settings, CheckCircle2 } from 'lucide-react';
 import type { AlgorithmType } from '@/features/visualizer/algorithms';
+
+type AppPhase = 'device_select' | 'calibration' | 'session';
 
 function App() {
   const { 
@@ -17,9 +21,28 @@ function App() {
     brainState, 
     visualParams, 
     brainStateHistory,
+    deviceConfig,
+    setDeviceConfig,
     startSession,
-    stopSession
+    stopSession,
+    // Calibration state
+    calibrationStatus,
+    calibrationStage,
+    calibrationProgress,
+    calibrationResults,
+    calibrationError,
+    isCalibrated,
+    // Calibration actions
+    startCalibration,
+    startCalibrationStage,
+    stopCalibrationStage,
+    trainCalibration,
+    cancelCalibration
   } = useWebSocket();
+
+  // App phase state
+  const [appPhase, setAppPhase] = useState<AppPhase>('device_select');
+  const [showDeviceModal, setShowDeviceModal] = useState(true);
 
   const audioEngine = useAudioEngineContext();
 
@@ -30,6 +53,31 @@ function App() {
   // Mobile UI state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<'visuals' | 'eeg' | 'audio' | null>(null);
+
+  // Handle device selection from modal
+  const handleDeviceSelected = useCallback((deviceType: string, deviceAddress?: string, devicePreset?: string) => {
+    console.log('Device selected:', { deviceType, deviceAddress, devicePreset });
+    setDeviceConfig({
+      deviceType,
+      deviceAddress,
+      devicePreset
+    });
+    setShowDeviceModal(false);
+    // Move to calibration phase
+    setAppPhase('calibration');
+  }, [setDeviceConfig]);
+  
+  // Handle calibration complete - move to session phase
+  const handleCalibrationComplete = useCallback(() => {
+    setAppPhase('session');
+  }, []);
+  
+  // Handle calibration cancel - go back to device selection
+  const handleCalibrationCancel = useCallback(() => {
+    cancelCalibration();
+    setAppPhase('device_select');
+    setShowDeviceModal(true);
+  }, [cancelCalibration]);
   
   // Close mobile menu when clicking outside or starting session
   const closeMobileMenu = useCallback(() => {
@@ -69,7 +117,54 @@ function App() {
     }
   }, [brainState, audioEngine]);
 
+  // Render calibration phase
+  if (appPhase === 'calibration') {
+    return (
+      <div className="min-h-screen bg-background text-foreground font-sans overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-syn-dark via-[#050510] to-black">
+        <div className="h-screen flex flex-col">
+          {/* Minimal header during calibration */}
+          <header className="p-4 md:p-8 flex justify-between items-center flex-none">
+            <div>
+              <h1 className="text-2xl md:text-4xl font-bold font-display text-transparent bg-clip-text bg-gradient-to-r from-syn-cyan via-syn-purple to-syn-cyan tracking-tighter">
+                SYNESTHESIA
+              </h1>
+              <p className="text-sm text-muted-foreground font-mono mt-1 border-l-2 border-syn-cyan pl-4">
+                CALIBRATION // {deviceConfig.deviceType === 'simulator' ? 'SIMULATOR' : 'MUSE S'}
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-2 text-xs font-mono">
+              {isConnected ? (
+                <span className="flex items-center gap-1 text-syn-green"><Wifi className="w-3 h-3" /> CONNECTED</span>
+              ) : (
+                <span className="flex items-center gap-1 text-destructive"><WifiOff className="w-3 h-3" /> DISCONNECTED</span>
+              )}
+            </div>
+          </header>
+          
+          {/* Calibration flow */}
+          <main className="flex-1 min-h-0">
+            <CalibrationFlow
+              calibrationStatus={calibrationStatus}
+              calibrationStage={calibrationStage}
+              calibrationProgress={calibrationProgress}
+              calibrationResults={calibrationResults}
+              calibrationError={calibrationError}
+              isCalibrated={isCalibrated}
+              onStartCalibration={startCalibration}
+              onStartStage={startCalibrationStage}
+              onStopStage={stopCalibrationStage}
+              onTrain={trainCalibration}
+              onCancel={handleCalibrationCancel}
+              onComplete={handleCalibrationComplete}
+            />
+          </main>
+        </div>
+      </div>
+    );
+  }
 
+  // Render main session phase
   return (
     <div className="min-h-screen bg-background text-foreground font-sans p-2 sm:p-4 md:p-8 overflow-hidden bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-syn-dark via-[#050510] to-black">
       <div className="h-[calc(100vh-1rem)] sm:h-[calc(100vh-2rem)] md:h-[calc(100vh-4rem)] flex flex-col">
@@ -90,7 +185,8 @@ function App() {
                 SYNESTHESIA
               </h1>
               <p className="hidden sm:block text-sm md:text-lg text-muted-foreground font-mono mt-1 border-l-2 border-syn-cyan pl-4">
-                NEURAL_INTERFACE // {isConnected ? 'ONLINE (SIM)' : 'OFFLINE'}
+                NEURAL_INTERFACE // {isConnected ? (deviceConfig.deviceType === 'simulator' ? 'ONLINE (SIM)' : 'ONLINE (MUSE)') : 'OFFLINE'}
+                {isCalibrated && <span className="ml-2 text-syn-green">• CALIBRATED</span>}
               </p>
             </div>
           </div>
@@ -117,10 +213,27 @@ function App() {
                ) : (
                  <span className="flex items-center gap-1 text-destructive"><WifiOff className="w-3 h-3" /> DISCONNECTED</span>
                )}
+               {isCalibrated && (
+                 <span className="flex items-center gap-1 text-syn-green ml-2">
+                   <CheckCircle2 className="w-3 h-3" /> CALIBRATED
+                 </span>
+               )}
              </div>
              <div className="text-xs font-mono text-muted-foreground">SYS.VER.0.1.0</div>
              
              <div className="flex gap-2 mt-2">
+               <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setAppPhase('device_select');
+                  setShowDeviceModal(true);
+                }}
+                className="h-6 text-xs"
+               >
+                 <Settings className="w-3 h-3 mr-1" />
+                 DEVICE
+               </Button>
                <Button 
                 size="sm" 
                 variant={isSessionActive ? "destructive" : "neon"}
@@ -326,6 +439,13 @@ function App() {
           </div>
         </main>
       </div>
+
+      {/* Device Configuration Modal */}
+      <DeviceConfigModal
+        isOpen={showDeviceModal}
+        onClose={() => setShowDeviceModal(false)}
+        onDeviceSelected={handleDeviceSelected}
+      />
     </div>
   );
 }

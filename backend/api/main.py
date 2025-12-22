@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.api.routes import health, sessions, users, audio, visual
+from backend.api.routes import health, sessions, users, visual, devices
 from backend.api.websocket import router as websocket_router
 from backend.core.config import settings
 from backend.core.exceptions import SynesthesiaError
@@ -123,8 +123,8 @@ async def general_exception_handler(request, exc: Exception) -> JSONResponse:
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
-app.include_router(audio.router, prefix="/api/v1/audio", tags=["audio"])
 app.include_router(visual.router, prefix="/api/v1/visual", tags=["visual"])
+app.include_router(devices.router, prefix="/api/v1", tags=["devices"])
 app.include_router(websocket_router, tags=["websocket"])
 
 
@@ -229,6 +229,19 @@ async def system_status():
                 "target_latency_ms": 100,
                 "achieved_latency_ms": 11,
                 "update_rate_hz": 8
+            },
+            "muse_s_athena": {
+                "status": "available",
+                "library": "OpenMuse",
+                "modalities": ["eeg", "fnirs", "ppg", "imu"],
+                "eeg_channels": 8,
+                "eeg_sampling_rate": 256,
+                "fnirs_sampling_rate": 64,
+                "ppg_wavelengths": ["IR", "NIR", "RED"],
+                "imu_sampling_rate": 52,
+                "ble_version": "5.3",
+                "resolution_bits": {"eeg": 14, "ppg": 20},
+                "lsl_streams": ["Muse_EEG", "Muse_ACCGYRO", "Muse_OPTICS", "Muse_BATTERY"]
             }
         },
         "statistics": {
@@ -354,6 +367,43 @@ async def system_capabilities():
                 "name": "Relax",
                 "description": "Relaxed, calm state"
             }
+        ],
+        "devices": [
+            {
+                "id": "muse_s_athena",
+                "name": "Muse S Athena",
+                "status": "available",
+                "library": "OpenMuse",
+                "modalities": ["eeg", "fnirs", "ppg", "imu"],
+                "eeg": {
+                    "channels": ["EEG_TP9", "EEG_AF7", "EEG_AF8", "EEG_TP10", "AUX_1", "AUX_2", "AUX_3", "AUX_4"],
+                    "sampling_rate_hz": 256,
+                    "resolution_bits": 14
+                },
+                "fnirs": {
+                    "channels": 16,
+                    "sampling_rate_hz": 64
+                },
+                "ppg": {
+                    "wavelengths": ["IR", "NIR", "RED"],
+                    "sampling_rate_hz": 64,
+                    "resolution_bits": 20
+                },
+                "imu": {
+                    "channels": ["ACC_X", "ACC_Y", "ACC_Z", "GYRO_X", "GYRO_Y", "GYRO_Z"],
+                    "sampling_rate_hz": 52
+                },
+                "connectivity": {
+                    "transport": "BLE",
+                    "version": "5.3"
+                },
+                "presets": {
+                    "eeg_only": "p20",
+                    "eeg_basic": "p1035",
+                    "eeg_ppg": "p1045",
+                    "full_research": "p1041"
+                }
+            }
         ]
     }
 
@@ -368,7 +418,6 @@ if __name__ == "__main__":
         reload=settings.is_development,
         log_level=settings.log_level.lower()
     )
-
 
 
 

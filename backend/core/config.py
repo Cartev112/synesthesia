@@ -32,9 +32,15 @@ class Settings(BaseSettings):
     redis_db: int = 0
     
     # EEG Device Settings
-    eeg_device_type: Literal["simulator", "openbci", "muse"] = "simulator"
+    eeg_device_type: Literal["simulator", "openbci", "muse", "muse_s_athena"] = "simulator"
     eeg_sampling_rate: int = 256
     eeg_num_channels: int = 8
+    muse_ble_name: str | None = None
+    muse_connection_timeout: int = 15  # seconds
+    muse_max_retries: int = 3
+    muse_enable_fnirs: bool = True
+    muse_enable_ppg: bool = True
+    muse_enable_imu: bool = True
     
     # Signal Processing
     signal_window_size: float = 1.0  # seconds
@@ -123,7 +129,6 @@ def get_settings() -> Settings:
     Useful for dependency injection in FastAPI.
     """
     return settings
-
 
 
 
