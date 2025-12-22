@@ -10,6 +10,11 @@ import {
   type AlgorithmType,
   type ColoredLayer
 } from './algorithms';
+import { 
+  mapSyncToVisualParams, 
+  getSyncVisualLabel,
+  type SyncVisualState 
+} from './syncVisualMapping';
 
 interface VisualParams {
   timestamp?: number;
@@ -47,9 +52,10 @@ interface VisualCanvasProps {
   params?: VisualParams | null;
   algorithm?: AlgorithmType;
   isActive?: boolean; // Controls fade in/out
+  syncState?: SyncVisualState | null; // Multi-user sync state
 }
 
-export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive = false }: VisualCanvasProps) {
+export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive = false, syncState = null }: VisualCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const paramsRef = useRef(params);
   const algorithmRef = useRef(algorithm);
@@ -58,13 +64,15 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive
   const accumulatedRotationRef = useRef(0);
   const canvasOpacityRef = useRef(0); // Start at 0 (blank)
   const isActiveRef = useRef(isActive);
+  const syncStateRef = useRef(syncState);
 
   // Keep refs in sync with props for animation loop
   useEffect(() => {
     paramsRef.current = params;
     algorithmRef.current = algorithm;
     isActiveRef.current = isActive;
-  }, [params, algorithm, isActive]);
+    syncStateRef.current = syncState;
+  }, [params, algorithm, isActive, syncState]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -142,8 +150,17 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive
       ctx.beginPath();
       let customLayers: ColoredLayer[] | undefined;
       
-      // Pass both time and rotation to algorithms
-      const renderParams = { ...p, _accumulatedRotation: rotation };
+      // Get sync visual overrides (smoothed)
+      const syncOverrides = mapSyncToVisualParams(syncStateRef.current);
+      
+      // Pass both time, rotation, and sync state to algorithms
+      const renderParams = { 
+        ...p, 
+        _accumulatedRotation: rotation,
+        _syncOverrides: syncOverrides,
+        // Apply sync-based trail fragmentation
+        trail_length: Math.max(0.5, (p.trail_length ?? 0.9) - syncOverrides.trail_fragmentation),
+      };
       
       switch (algo) {
         case 'lissajous':
@@ -183,8 +200,12 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive
         ctx.restore();
       } else {
         // Dynamic multi-pass stroke for richer color layering
-        const hue = (hueBase + t * colorCycleSpeed * 60) % 360;
-        const hues = [hue, (hue + 42) % 360, (hue + 300) % 360];
+        // Apply sync-based color shifts
+        const syncHue = (hueBase + syncOverrides.hue_shift + t * colorCycleSpeed * 60) % 360;
+        const syncSat = Math.min(1, Math.max(0, saturation * syncOverrides.saturation_mult));
+        const syncBright = Math.min(1, Math.max(0, brightness * syncOverrides.brightness_mult));
+        
+        const hues = [syncHue, (syncHue + 42) % 360, (syncHue + 300) % 360];
         const widths = [2.6, 1.6, 0.9];
         const blurs = [18, 10, 4];
 
@@ -193,7 +214,7 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive
         ctx.lineJoin = 'round';
 
         hues.forEach((h, idx) => {
-          const strokeColor = hslToRgb(h, saturation, brightness - idx * 0.08);
+          const strokeColor = hslToRgb(h, syncSat, syncBright - idx * 0.08);
           ctx.strokeStyle = strokeColor;
           ctx.lineWidth = widths[idx];
           ctx.shadowBlur = blurs[idx];
@@ -224,6 +245,9 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive
       .reduce((a, b) => (b[1] as number) > (a[1] as number) ? b : a, ['neutral', 0])[0]
     : 'unknown';
   const dominantValue = brainState?.[dominantState as keyof typeof brainState] ?? 0;
+  
+  // Get sync visual label for display
+  const syncLabel = getSyncVisualLabel(syncState);
 
   return (
     <Card className="h-full w-full overflow-hidden bg-black/80 border-syn-cyan/30 shadow-[0_0_30px_rgba(0,243,255,0.1)]">
@@ -248,6 +272,33 @@ export function VisualCanvas({ params, algorithm = 'hyperspace_portal', isActive
           </>
         )}
       </div>
+      
+      {/* Sync status indicator (only shown in sync mode) */}
+      {syncState && (
+        <div className="absolute bottom-4 left-4 pointer-events-none">
+          <div 
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md border"
+            style={{ 
+              backgroundColor: `${syncLabel.color}15`,
+              borderColor: `${syncLabel.color}40`
+            }}
+          >
+            <div 
+              className="w-2 h-2 rounded-full animate-pulse"
+              style={{ backgroundColor: syncLabel.color }}
+            />
+            <span 
+              className="text-xs font-mono font-bold"
+              style={{ color: syncLabel.color }}
+            >
+              {syncLabel.label}
+            </span>
+            <span className="text-[10px] font-mono text-white/50">
+              {Math.round(syncState.sync_score * 100)}%
+            </span>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

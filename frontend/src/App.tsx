@@ -474,7 +474,15 @@ function App() {
           {/* Center Column: Visualizer (full width on mobile) */}
           <div className="col-span-1 md:col-span-6 h-full min-h-[250px] sm:min-h-[350px] md:min-h-[400px] relative">
             <div className="absolute inset-0">
-              <VisualCanvas params={activeVisualParams} algorithm={selectedAlgorithm} isActive={isSessionActive} />
+              <VisualCanvas 
+                params={activeVisualParams} 
+                algorithm={selectedAlgorithm} 
+                isActive={isSessionActive}
+                syncState={sessionMode === 'sync' && currentSyncState ? {
+                  sync_score: currentSyncState.sync_score,
+                  dissonance_level: currentSyncState.dissonance_level
+                } : null}
+              />
             </div>
 
             {(manualParams || presetParams) && (
