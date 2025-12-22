@@ -41,6 +41,7 @@ class RealtimePipeline:
         on_visual_params: Optional[Callable] = None,
         on_audio_buffer: Optional[Callable] = None,
         on_features: Optional[Callable] = None,
+        on_sync_features: Optional[Callable] = None,
         on_error: Optional[Callable] = None
     ):
         """
@@ -55,6 +56,7 @@ class RealtimePipeline:
             on_music_events: Callback for music events
             on_visual_params: Callback for visual parameters
             on_features: Callback for feature vectors (used during calibration)
+            on_sync_features: Callback for sync features (features, feature_dict, is_artifact)
             on_error: Callback for errors
         """
         self.sampling_rate = sampling_rate
@@ -68,6 +70,7 @@ class RealtimePipeline:
         self.on_visual_params = on_visual_params
         self.on_audio_buffer = on_audio_buffer
         self.on_features = on_features
+        self.on_sync_features = on_sync_features  # For multi-user sync sessions
         self.on_error = on_error
         
         # Components
@@ -264,6 +267,10 @@ class RealtimePipeline:
                     # 5b. Send features if in calibration mode
                     if self.calibration_mode and self.on_features:
                         await self.on_features(feature_array)
+                    
+                    # 5c. Send sync features for multi-user sync sessions
+                    if self.on_sync_features:
+                        await self.on_sync_features(feature_array, features, is_artifact)
                     
                     # 6. ML inference
                     if self.is_calibrated and self.user_calibration is not None:

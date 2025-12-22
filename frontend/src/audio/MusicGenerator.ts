@@ -11,6 +11,11 @@ export interface BrainState {
   relax: number;   // 0-1 (sum of probabilities)
 }
 
+export interface SyncState {
+  sync_score: number;       // 0-1 (1 = perfectly synced)
+  dissonance_level: number; // 0-1 (0 = consonant, 1 = dissonant)
+}
+
 // Musical scales - ambient-friendly modes
 const SCALES = {
   major: [0, 2, 4, 5, 7, 9, 11],
@@ -58,6 +63,18 @@ const PROGRESSIONS = [
   [5, 5, 0, 0],       // vi-vi-I-I (dark to light)
 ];
 
+// Dissonant intervals (semitones from root) for sync-driven tension
+const DISSONANT_INTERVALS = {
+  minorSecond: 1,     // Most dissonant
+  majorSeventh: 11,   // Sharp dissonance
+  tritone: 6,         // Classic tension
+  minorNinth: 13,     // Extended dissonance
+  augmentedFourth: 6, // Lydian tension
+};
+
+// Consonant intervals for reference (consonance is achieved via chord voicing):
+// perfectFifth: 7, majorThird: 4, perfectFourth: 5, majorSixth: 9, octave: 12
+
 export class MusicGenerator {
   private stepCount: number = 0;
   private currentScale: number[] = SCALES.major;
@@ -70,6 +87,10 @@ export class MusicGenerator {
   private progressionIndex: number = 0; // Position in current progression
   private currentProgression: number[] = PROGRESSIONS[0]; // Active progression
   private chordChangeCount: number = 0; // Track chord changes for progression
+  
+  // Multi-user sync state
+  private syncState: SyncState = { sync_score: 0.5, dissonance_level: 0.5 };
+  private isSyncMode: boolean = false; // Whether we're in a multi-user sync session
 
   /**
    * Generate events for all layers
@@ -91,6 +112,22 @@ export class MusicGenerator {
 
     this.stepCount++;
     return events;
+  }
+
+  /**
+   * Update sync state from multi-user session
+   * @param syncState Current sync state between users
+   */
+  updateSyncState(syncState: SyncState): void {
+    this.syncState = syncState;
+  }
+
+  /**
+   * Enable/disable sync mode
+   * @param enabled Whether sync mode is active
+   */
+  setSyncMode(enabled: boolean): void {
+    this.isSyncMode = enabled;
   }
 
   /**
@@ -120,6 +157,7 @@ export class MusicGenerator {
 
   /**
    * Build a chord with ambient extensions and voicings
+   * In sync mode, dissonance_level modulates chord quality
    */
   private buildChord(scaleDegree: number): number[] {
     const root = this.currentScale[scaleDegree];
@@ -130,7 +168,12 @@ export class MusicGenerator {
     const sixth = this.currentScale[(scaleDegree + 5) % this.currentScale.length];
     const seventh = this.currentScale[(scaleDegree + 6) % this.currentScale.length];
 
-    // Ambient chord voicings - favor extensions, suspensions, and open voicings
+    // In sync mode, use dissonance level to modulate chord quality
+    if (this.isSyncMode) {
+      return this.buildSyncModulatedChord(root, second, third, fourth, fifth, sixth, seventh);
+    }
+
+    // Standard ambient chord voicings - favor extensions, suspensions, and open voicings
     const rand = Math.random();
     
     if (rand < 0.20) {
@@ -157,6 +200,89 @@ export class MusicGenerator {
     } else {
       // Sparse - just root and fifth (8% chance) - minimal, drone-like
       return [root, fifth];
+    }
+  }
+
+  /**
+   * Build chord modulated by sync dissonance level
+   * High sync (low dissonance) = consonant, open chords
+   * Low sync (high dissonance) = tense, dissonant chords
+   */
+  private buildSyncModulatedChord(
+    root: number,
+    second: number, 
+    third: number,
+    fourth: number,
+    fifth: number,
+    sixth: number,
+    seventh: number
+  ): number[] {
+    const dissonance = this.syncState.dissonance_level;
+    const rand = Math.random();
+
+    // High dissonance (low sync) - use tense intervals
+    if (dissonance > 0.7) {
+      if (rand < 0.3) {
+        // Tritone substitution - very tense
+        return [root, root + DISSONANT_INTERVALS.tritone, root + DISSONANT_INTERVALS.majorSeventh];
+      } else if (rand < 0.5) {
+        // Minor 2nd cluster - harsh
+        return [root, root + DISSONANT_INTERVALS.minorSecond, fifth];
+      } else if (rand < 0.7) {
+        // Augmented chord with minor 9th
+        return [root, third + 1, fifth + 1, root + DISSONANT_INTERVALS.minorNinth];
+      } else {
+        // Stacked fourths with tritone - unresolved
+        return [root, fourth, root + DISSONANT_INTERVALS.tritone, fourth + 12];
+      }
+    }
+    // Medium-high dissonance
+    else if (dissonance > 0.5) {
+      if (rand < 0.3) {
+        // Major 7th tension
+        return [root, third, fifth, root + DISSONANT_INTERVALS.majorSeventh];
+      } else if (rand < 0.5) {
+        // Sus4 with added tritone
+        return [root, fourth, fifth, root + DISSONANT_INTERVALS.tritone];
+      } else if (rand < 0.7) {
+        // Minor with major 7th - ambiguous
+        return [root, third - 1, fifth, seventh];
+      } else {
+        // Diminished with tension
+        return [root, third - 1, fifth - 1, sixth];
+      }
+    }
+    // Medium-low dissonance (moderate sync)
+    else if (dissonance > 0.3) {
+      if (rand < 0.3) {
+        // Sus2 - open, slightly unresolved
+        return [root, second, fifth];
+      } else if (rand < 0.5) {
+        // Add9 - lush but with some tension
+        return [root, third, fifth, second + 12];
+      } else if (rand < 0.7) {
+        // 7th chord - smooth tension
+        return [root, third, fifth, seventh];
+      } else {
+        // Sus4 - suspended
+        return [root, fourth, fifth];
+      }
+    }
+    // Low dissonance (high sync) - pure, consonant
+    else {
+      if (rand < 0.3) {
+        // Pure power chord with octave
+        return [root, fifth, root + 12];
+      } else if (rand < 0.5) {
+        // Major triad - pure consonance
+        return [root, third, fifth];
+      } else if (rand < 0.7) {
+        // Open fifth with high octave - ethereal
+        return [root, fifth, root + 12, fifth + 12];
+      } else {
+        // Root and fifth only - minimal, pure
+        return [root, fifth];
+      }
     }
   }
 
@@ -299,33 +425,65 @@ export class MusicGenerator {
 
   /**
    * Generate texture - gentle, overlapping arpeggios with wide spacing
+   * In sync mode, dissonance affects density and note choice
    */
   private generateTexture(stepDuration: number, brainState: BrainState): MidiEvent[] {
     const events: MidiEvent[] = [];
 
-    // Slower arpeggios for ambient - more space between notes
-    // Focus = medium arpeggios, Relax = very slow, sparse
+    // In sync mode, dissonance affects arpeggio density
+    // High dissonance = faster, more chaotic; Low dissonance = slow, peaceful
     let arpSpeed: number;
-    if (brainState.focus > 0.6) {
-      arpSpeed = 3; // Play every 3 steps
-    } else if (brainState.relax > 0.6) {
-      arpSpeed = 6; // Play every 6 steps (very slow)
+    
+    if (this.isSyncMode) {
+      const dissonance = this.syncState.dissonance_level;
+      if (dissonance > 0.7) {
+        arpSpeed = 2; // Fast, agitated when desynced
+      } else if (dissonance > 0.4) {
+        arpSpeed = 3; // Medium tension
+      } else {
+        arpSpeed = 5; // Slow, peaceful when synced
+      }
     } else {
-      arpSpeed = 4; // Play every 4 steps
+      // Standard brain-state-based speed
+      if (brainState.focus > 0.6) {
+        arpSpeed = 3; // Play every 3 steps
+      } else if (brainState.relax > 0.6) {
+        arpSpeed = 6; // Play every 6 steps (very slow)
+      } else {
+        arpSpeed = 4; // Play every 4 steps
+      }
     }
 
     // Play arpeggio note on the appropriate steps
     if (this.stepCount % arpSpeed === 0) {
-      const chordTone = this.currentChord[this.textureArpIndex % this.currentChord.length];
+      let note: number;
       
-      // Wide octave spread for ambient shimmer
-      const octaveOptions = [12, 24, 36]; // 1, 2, or 3 octaves up
-      const octaveShift = octaveOptions[this.textureArpIndex % octaveOptions.length];
-      const note = this.currentRoot + chordTone + octaveShift;
+      if (this.isSyncMode && this.syncState.dissonance_level > 0.6) {
+        // High dissonance: add chromatic passing tones and dissonant intervals
+        const chordTone = this.currentChord[this.textureArpIndex % this.currentChord.length];
+        const octaveOptions = [12, 24, 36];
+        const octaveShift = octaveOptions[this.textureArpIndex % octaveOptions.length];
+        
+        // Add chromatic alteration based on dissonance
+        const chromaticShift = Math.random() < this.syncState.dissonance_level ? 
+          (Math.random() < 0.5 ? -1 : 1) : 0;
+        
+        note = this.currentRoot + chordTone + chromaticShift + octaveShift;
+      } else {
+        // Standard chord tone
+        const chordTone = this.currentChord[this.textureArpIndex % this.currentChord.length];
+        const octaveOptions = [12, 24, 36]; // 1, 2, or 3 octaves up
+        const octaveShift = octaveOptions[this.textureArpIndex % octaveOptions.length];
+        note = this.currentRoot + chordTone + octaveShift;
+      }
 
-      // Long, overlapping durations for pad-like texture
+      // Duration affected by sync state
       let duration: number;
-      if (brainState.relax > 0.6) {
+      if (this.isSyncMode) {
+        // High sync = long, overlapping; Low sync = short, staccato
+        const syncFactor = 1 - this.syncState.dissonance_level;
+        duration = arpSpeed * (1.5 + syncFactor * 2.5);
+      } else if (brainState.relax > 0.6) {
         duration = arpSpeed * 4; // Very long, heavily overlapping
       } else if (brainState.focus > 0.6) {
         duration = arpSpeed * 2; // Medium overlap
@@ -333,9 +491,13 @@ export class MusicGenerator {
         duration = arpSpeed * 3; // Good overlap for ambient
       }
 
+      // Velocity also affected by sync - low sync = louder, more aggressive
+      const baseVelocity = this.isSyncMode ? 
+        20 + this.syncState.dissonance_level * 20 : 20;
+      
       events.push({
         note,
-        velocity: 20 + Math.random() * 15, // Very soft for texture
+        velocity: baseVelocity + Math.random() * 15,
         duration: stepDuration * duration,
         time: 0,
       });

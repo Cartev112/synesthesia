@@ -5,14 +5,17 @@ import { ParameterControls } from '@/features/visualizer/ParameterControls';
 import { AudioControls } from '@/features/audio/AudioControls';
 import { EEGDisplay } from '@/features/eeg/EEGDisplay';
 import { CalibrationFlow } from '@/features/calibration/CalibrationFlow';
+import { SyncSessionPanel } from '@/features/sync/SyncSessionPanel';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useAudioEngineContext } from '@/contexts/AudioEngineContext';
 import { Button } from '@/components/ui/button';
 import { DeviceConfigModal } from '@/components/DeviceConfigModal';
-import { Power, Wifi, WifiOff, Menu, X, ChevronDown, ChevronUp, Settings, CheckCircle2 } from 'lucide-react';
+import { Power, Wifi, WifiOff, Menu, X, ChevronDown, ChevronUp, Settings, CheckCircle2, Users, User } from 'lucide-react';
 import type { AlgorithmType } from '@/features/visualizer/algorithms';
+import type { SyncState } from '@/hooks/useSyncSession';
 
 type AppPhase = 'device_select' | 'calibration' | 'session';
+type SessionMode = 'solo' | 'sync';
 
 function App() {
   const { 
@@ -43,6 +46,7 @@ function App() {
   // App phase state
   const [appPhase, setAppPhase] = useState<AppPhase>('device_select');
   const [showDeviceModal, setShowDeviceModal] = useState(true);
+  const [sessionMode, setSessionMode] = useState<SessionMode>('solo');
 
   const audioEngine = useAudioEngineContext();
 
@@ -52,7 +56,10 @@ function App() {
   
   // Mobile UI state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activePanel, setActivePanel] = useState<'visuals' | 'eeg' | 'audio' | null>(null);
+  const [activePanel, setActivePanel] = useState<'visuals' | 'eeg' | 'audio' | 'sync' | null>(null);
+  
+  // Sync state for multi-user mode
+  const [currentSyncState, setCurrentSyncState] = useState<SyncState | null>(null);
 
   // Handle device selection from modal
   const handleDeviceSelected = useCallback((deviceType: string, deviceAddress?: string, devicePreset?: string) => {
@@ -116,6 +123,24 @@ function App() {
       audioEngine.updateBrainState(mappedBrainState);
     }
   }, [brainState, audioEngine]);
+
+  // Update audio engine with sync state (multi-user mode)
+  useEffect(() => {
+    if (currentSyncState && sessionMode === 'sync') {
+      audioEngine.setSyncMode(true);
+      audioEngine.updateSyncState({
+        sync_score: currentSyncState.sync_score,
+        dissonance_level: currentSyncState.dissonance_level,
+      });
+    } else {
+      audioEngine.setSyncMode(false);
+    }
+  }, [currentSyncState, sessionMode, audioEngine]);
+  
+  // Handle sync state updates from the sync panel
+  const handleSyncStateChange = useCallback((syncState: SyncState | null) => {
+    setCurrentSyncState(syncState);
+  }, []);
 
   // Render calibration phase
   if (appPhase === 'calibration') {
@@ -221,6 +246,28 @@ function App() {
              </div>
              <div className="text-xs font-mono text-muted-foreground">SYS.VER.0.1.0</div>
              
+             {/* Mode toggle */}
+             <div className="flex items-center gap-1 mt-2 p-1 rounded-lg bg-black/30 border border-white/10">
+               <Button
+                 size="sm"
+                 variant={sessionMode === 'solo' ? 'neon' : 'ghost'}
+                 onClick={() => setSessionMode('solo')}
+                 className="h-6 text-xs px-2"
+               >
+                 <User className="w-3 h-3 mr-1" />
+                 SOLO
+               </Button>
+               <Button
+                 size="sm"
+                 variant={sessionMode === 'sync' ? 'neon' : 'ghost'}
+                 onClick={() => setSessionMode('sync')}
+                 className="h-6 text-xs px-2"
+               >
+                 <Users className="w-3 h-3 mr-1" />
+                 SYNC
+               </Button>
+             </div>
+             
              <div className="flex gap-2 mt-2">
                <Button
                 size="sm"
@@ -234,27 +281,29 @@ function App() {
                  <Settings className="w-3 h-3 mr-1" />
                  DEVICE
                </Button>
-               <Button 
-                size="sm" 
-                variant={isSessionActive ? "destructive" : "neon"}
-                onClick={() => {
-                  console.log('Session button clicked', {
-                    isSessionActive,
-                    isConnected,
-                    action: isSessionActive ? 'stop' : 'start'
-                  });
-                  if (isSessionActive) {
-                    stopSession();
-                  } else {
-                    startSession();
-                  }
-                }}
-                disabled={!isConnected}
-                className="h-6 text-xs"
-               >
-                 <Power className="w-3 h-3 mr-1" />
-                 {isSessionActive ? 'STOP SESSION' : 'START SESSION'}
-               </Button>
+               {sessionMode === 'solo' && (
+                 <Button 
+                  size="sm" 
+                  variant={isSessionActive ? "destructive" : "neon"}
+                  onClick={() => {
+                    console.log('Session button clicked', {
+                      isSessionActive,
+                      isConnected,
+                      action: isSessionActive ? 'stop' : 'start'
+                    });
+                    if (isSessionActive) {
+                      stopSession();
+                    } else {
+                      startSession();
+                    }
+                  }}
+                  disabled={!isConnected}
+                  className="h-6 text-xs"
+                 >
+                   <Power className="w-3 h-3 mr-1" />
+                   {isSessionActive ? 'STOP SESSION' : 'START SESSION'}
+                 </Button>
+               )}
              </div>
           </div>
           
@@ -376,6 +425,22 @@ function App() {
                   </div>
                 )}
               </div>
+              
+              {/* Collapsible Sync Session */}
+              <div className="mb-3">
+                <button 
+                  className="w-full flex justify-between items-center py-2 px-3 rounded-lg bg-card/50 border border-white/10"
+                  onClick={() => setActivePanel(activePanel === 'sync' ? null : 'sync')}
+                >
+                  <span className="text-sm font-mono text-syn-purple">MULTI-USER SYNC</span>
+                  {activePanel === 'sync' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {activePanel === 'sync' && (
+                  <div className="mt-2">
+                    <SyncSessionPanel onSyncStateChange={handleSyncStateChange} />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -428,11 +493,22 @@ function App() {
             )}
           </div>
           
-          {/* Right Column: EEG + Audio (hidden on mobile - shown in slide-out menu) */}
+          {/* Right Column: EEG + Audio + Sync (hidden on mobile - shown in slide-out menu) */}
           <div className="hidden md:flex md:col-span-3 flex-col gap-6 overflow-y-auto h-full min-h-0">
-            <div className="flex-none">
-              <EEGDisplay data={brainStateHistory} />
-            </div>
+            {/* Sync Panel - shown when in sync mode */}
+            {sessionMode === 'sync' && (
+              <div className="flex-none">
+                <SyncSessionPanel onSyncStateChange={handleSyncStateChange} />
+              </div>
+            )}
+            
+            {/* Solo mode EEG display */}
+            {sessionMode === 'solo' && (
+              <div className="flex-none">
+                <EEGDisplay data={brainStateHistory} />
+              </div>
+            )}
+            
             <div className="flex-none">
               <AudioControls />
             </div>

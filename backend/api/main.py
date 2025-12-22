@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from backend.api.routes import health, sessions, users, visual, devices
 from backend.api.websocket import router as websocket_router
+from backend.api.websocket_sync import router as websocket_sync_router
 from backend.core.config import settings
 from backend.core.exceptions import SynesthesiaError
 from backend.core.logging import get_logger
@@ -126,6 +127,7 @@ app.include_router(sessions.router, prefix="/api/v1", tags=["sessions"])
 app.include_router(visual.router, prefix="/api/v1/visual", tags=["visual"])
 app.include_router(devices.router, prefix="/api/v1", tags=["devices"])
 app.include_router(websocket_router, tags=["websocket"])
+app.include_router(websocket_sync_router, tags=["websocket_sync"])
 
 
 @app.get("/")
@@ -144,7 +146,8 @@ async def root():
             "sessions": "/api/v1/sessions",
             "audio": "/api/v1/audio",
             "visual": "/api/v1/visual",
-            "websocket": "/ws/stream/{session_id}"
+            "websocket": "/ws/stream/{session_id}",
+            "websocket_sync": "/ws/sync/{session_id}/{user_id}"
         },
         "features": {
             "eeg_processing": True,
@@ -153,7 +156,8 @@ async def root():
             "audio_synthesis": True,
             "visual_generation": True,
             "real_time_streaming": True,
-            "user_calibration": True
+            "user_calibration": True,
+            "multi_user_sync": True
         }
     }
 

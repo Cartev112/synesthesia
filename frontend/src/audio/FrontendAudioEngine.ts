@@ -4,7 +4,7 @@
  */
 
 import { AudioTrack, TrackConfig } from './AudioTrack';
-import { MusicGenerator, BrainState } from './MusicGenerator';
+import { MusicGenerator, BrainState, SyncState } from './MusicGenerator';
 import { WaveType } from './Synthesizer';
 
 export interface AudioEngineConfig {
@@ -262,6 +262,54 @@ export class FrontendAudioEngine {
   updateBrainState(brainState: Partial<BrainState>): void {
     this.brainState = { ...this.brainState, ...brainState };
     this.updateMasterEffects();
+  }
+
+  /**
+   * Update sync state from multi-user session
+   * Enables sync mode on the music generator
+   */
+  updateSyncState(syncState: SyncState): void {
+    this.musicGenerator.updateSyncState(syncState);
+    this.updateSyncEffects(syncState);
+  }
+
+  /**
+   * Enable/disable sync mode
+   */
+  setSyncMode(enabled: boolean): void {
+    this.musicGenerator.setSyncMode(enabled);
+  }
+
+  /**
+   * Update master effects based on sync state
+   * Low sync = brighter, harsher; High sync = warmer, spacier
+   */
+  private updateSyncEffects(syncState: SyncState): void {
+    if (!this.audioContext || !this.lowPassFilter || !this.reverbGain) return;
+
+    const now = this.audioContext.currentTime;
+    const dissonance = syncState.dissonance_level;
+    
+    // High dissonance = brighter (higher cutoff), more aggressive
+    // Low dissonance = warmer (lower cutoff), more ambient
+    const cutoff = 1000 + (1 - dissonance) * 2000 + dissonance * 2500;
+    
+    // Smooth transition
+    this.lowPassFilter.frequency.cancelScheduledValues(now);
+    this.lowPassFilter.frequency.setTargetAtTime(cutoff, now, 1.5);
+    
+    // High sync = more reverb (spacey togetherness)
+    // Low sync = less reverb (exposed, separate)
+    const syncScore = syncState.sync_score;
+    const reverbMix = 0.2 + syncScore * 0.5;
+    
+    this.reverbGain.gain.cancelScheduledValues(now);
+    this.reverbGain.gain.setTargetAtTime(reverbMix, now, 1);
+    
+    if (this.dryGain) {
+      this.dryGain.gain.cancelScheduledValues(now);
+      this.dryGain.gain.setTargetAtTime(1 - reverbMix, now, 1);
+    }
   }
 
   /**

@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { FrontendAudioEngine } from '../audio/FrontendAudioEngine';
-import { BrainState } from '../audio/MusicGenerator';
+import { BrainState, SyncState } from '../audio/MusicGenerator';
 
 export function useAudioEngine() {
   const engineRef = useRef<FrontendAudioEngine | null>(null);
@@ -64,6 +64,14 @@ export function useAudioEngine() {
     engineRef.current?.updateBrainState(brainState);
   };
 
+  const updateSyncState = (syncState: SyncState) => {
+    engineRef.current?.updateSyncState(syncState);
+  };
+
+  const setSyncMode = (enabled: boolean) => {
+    engineRef.current?.setSyncMode(enabled);
+  };
+
   return {
     isInitialized,
     isPlaying,
@@ -75,5 +83,7 @@ export function useAudioEngine() {
     setMasterVolume,
     setTrackSynthType,
     updateBrainState,
+    updateSyncState,
+    setSyncMode,
   };
 }
